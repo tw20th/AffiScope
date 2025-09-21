@@ -1,0 +1,61 @@
+# --- OS / エディタ ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+# ↑ settings.json も共有したいなら次を追加
+# !.vscode/settings.json
+
+# --- Node / パッケージマネージャ ---
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# --- TypeScript ---
+**/*.tsbuildinfo
+
+# --- 環境変数 / 秘密鍵（最重要）---
+.env
+.env.*
+!.env.example
+apps/web/.env.local
+firebase/functions/.env
+*.pem
+*.p12
+*.key
+*.crt
+*.der
+*.keystore
+serviceAccount*.json
+*.secret.*
+
+# --- Next.js ---
+.next/
+out/
+.vercel/
+
+# --- Firebase ---
+.firebase/
+firebase/functions/.runtimeconfig.json
+**/firestore-debug.log
+**/*-debug.log
+
+# --- ビルド生成物 ---
+firebase/functions/lib/
+packages/**/dist/
+**/dist/
+# ↑ ただし src/** は push するので安全
+
+# --- カバレッジ / 一時ファイル ---
+coverage/
+.nyc_output/
+
+# --- pnpm ローカルストア（稀）---
+.pnpm-store/
+
+
