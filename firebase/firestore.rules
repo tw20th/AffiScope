@@ -1,3 +1,4 @@
+// firebase/firestore.rules
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -5,11 +6,19 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.admin == true;
     }
 
+    // サイト設定
+    match /sites/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 商品
     match /products/{id} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
+    // カテゴリ
     match /categories/{id} {
       allow read: if true;
       allow write: if isAdmin();

@@ -1,26 +1,21 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "target": "ES2021",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
+
+    "baseUrl": ".", // ★ 追加
+    "paths": { "@/*": ["./*"] }, // ★ 追加（@ → apps/web 配下）
+
+    "jsx": "preserve",
+    "plugins": [{ "name": "next" }],
     "allowJs": true,
     "skipLibCheck": true,
     "incremental": true,
     "esModuleInterop": true,
     "isolatedModules": true
   },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
 }

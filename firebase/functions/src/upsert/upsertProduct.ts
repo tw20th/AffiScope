@@ -13,34 +13,45 @@ type SeedInput = {
   url?: string;
 };
 
+// ---- Firestore 初期化（settings() は使わない）----
+let _store: FirebaseFirestore.Firestore | null = null;
 function db() {
   if (admin.apps.length === 0) admin.initializeApp();
-  return getFirestore();
+  if (!_store) _store = getFirestore();
+  return _store;
+}
+
+// ---- undefined を落とす ----
+function pruneUndefined<T extends Record<string, unknown>>(obj: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out as T;
 }
 
 export async function upsertProductSeed(i: SeedInput) {
-  const ref = db().collection("products").doc(i.asin);
+  const store = db();
+  const ref = store.collection("products").doc(i.asin);
   const snap = await ref.get();
   const now = Date.now();
 
-  const base = {
+  const base = pruneUndefined({
     asin: i.asin,
     siteId: i.siteId,
     categoryId: i.categoryId,
     title: i.title ?? `商品 ${i.asin}`,
-    brand: i.brand ?? undefined,
-    imageUrl: i.imageUrl ?? undefined,
-    tags: [],
-    specs: undefined,
+    brand: i.brand,
+    imageUrl: i.imageUrl,
+    tags: [] as string[],
     priceHistory: [] as Array<{
       ts: number;
       source: "amazon" | "rakuten";
       price: number;
     }>,
     views: 0,
-  };
+  });
 
-  // 価格/オファーを付与
   const offers =
     i.price && i.url
       ? [
@@ -51,7 +62,7 @@ export async function upsertProductSeed(i: SeedInput) {
             lastSeenAt: now,
           },
         ]
-      : [];
+      : undefined;
 
   const bestPrice =
     i.price && i.url
@@ -63,14 +74,13 @@ export async function upsertProductSeed(i: SeedInput) {
         }
       : undefined;
 
-  await ref.set(
-    {
-      ...base,
-      offers,
-      ...(bestPrice ? { bestPrice } : {}),
-      createdAt: snap.exists ? (snap.data() as any)?.createdAt ?? now : now,
-      updatedAt: now,
-    },
-    { merge: true }
-  );
+  const payload = pruneUndefined({
+    ...base,
+    offers,
+    bestPrice,
+    createdAt: snap.exists ? (snap.data() as any)?.createdAt ?? now : now,
+    updatedAt: now,
+  });
+
+  await ref.set(payload, { merge: true });
 }

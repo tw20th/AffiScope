@@ -1,0 +1,21 @@
+{
+  "siteId": "chairscope",
+  "displayName": "ChairScope",
+  "domain": "chairscope.com",
+  "brand": {
+    "primary": "#10B981",
+    "accent": "#22D3EE",
+    "logoUrl": "/logos/chairscope.svg",
+    "theme": "dark"
+  },
+  "categoryPreset": ["gaming-chair"],
+  "affiliate": {
+    "amazon": { "partnerTag": "xxxxx-22" }
+  },
+  "features": {
+    "blogs": true,
+    "ranking": true
+  },
+  "createdAt": 0,
+  "updatedAt": 0
+}
