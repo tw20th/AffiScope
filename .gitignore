@@ -58,4 +58,5 @@ coverage/
 # --- pnpm ローカルストア（稀）---
 .pnpm-store/
 
+firebase/functions/shared-types/
 
