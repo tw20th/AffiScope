@@ -2,7 +2,7 @@
   "name": "@affiscope/web",
   "private": true,
   "scripts": {
-    "prebuild": "pnpm -w -C packages/shared-types run build",
+    "prebuild": "cd ../../packages/shared-types && pnpm run build",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
