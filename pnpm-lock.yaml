@@ -70,8 +70,11 @@ importers:
   firebase/functions:
     dependencies:
       '@affiscope/shared-schemas':
-        specifier: workspace:^
-        version: link:../../packages/shared-schemas
+        specifier: file:./shared-schemas
+        version: file:firebase/functions/shared-schemas
+      '@affiscope/shared-types':
+        specifier: file:./shared-types
+        version: file:firebase/functions/shared-types
       aws4:
         specifier: ^1.12.0
         version: 1.13.2
@@ -88,9 +91,6 @@ importers:
         specifier: ^4.1.9
         version: 4.1.11
     devDependencies:
-      '@affiscope/shared-types':
-        specifier: workspace:*
-        version: link:../../packages/shared-types
       '@types/aws4':
         specifier: ^1.11.6
         version: 1.11.6
@@ -136,6 +136,12 @@ importers:
         version: 5.9.2
 
 packages:
+
+  '@affiscope/shared-schemas@file:firebase/functions/shared-schemas':
+    resolution: {directory: firebase/functions/shared-schemas, type: directory}
+
+  '@affiscope/shared-types@file:firebase/functions/shared-types':
+    resolution: {directory: firebase/functions/shared-types, type: directory}
 
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
@@ -3513,6 +3519,10 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  '@affiscope/shared-schemas@file:firebase/functions/shared-schemas': {}
+
+  '@affiscope/shared-types@file:firebase/functions/shared-types': {}
 
   '@alloc/quick-lru@5.2.0': {}
 
