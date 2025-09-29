@@ -1,7 +1,8 @@
+// apps/web/app/products/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { db } from "../../lib/firebase";
+import { getDb } from "../../lib/firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { productConverter } from "../../lib/converters";
 import type { Product, Category } from "@affiscope/shared-types";
@@ -30,7 +31,7 @@ export default function ProductsPage({ searchParams }: { searchParams?: SP }) {
   const baseQuery = useMemo(
     () =>
       query(
-        collection(db, "products").withConverter(productConverter),
+        collection(getDb(), "products").withConverter(productConverter),
         where("siteId", "==", siteId),
         where("categoryId", "==", categorySlug)
       ),
@@ -43,11 +44,11 @@ export default function ProductsPage({ searchParams }: { searchParams?: SP }) {
       setLoading(true);
       setErr(null);
       try {
-        // カテゴリ情報
-        const cat = await fetchCategoryBySlug(db, siteId, categorySlug);
+        // カテゴリ情報（クライアント側で getDb() を渡す）
+        const cat = await fetchCategoryBySlug(getDb(), siteId, categorySlug);
         const [bc, sib] = await Promise.all([
-          fetchBreadcrumbs(db, siteId, cat),
-          fetchSiblings(db, siteId, cat),
+          fetchBreadcrumbs(getDb(), siteId, cat),
+          fetchSiblings(getDb(), siteId, cat),
         ]);
         if (!cancelled) {
           setCurrentCat(cat);
@@ -85,7 +86,7 @@ export default function ProductsPage({ searchParams }: { searchParams?: SP }) {
               ホーム
             </a>
           </li>
-          {crumbs.map((c, i) => (
+          {crumbs.map((c) => (
             <li key={c.id} className="flex items-center gap-1">
               <span>›</span>
               <a href={`/products?category=${c.slug}`} className="underline">
@@ -107,7 +108,9 @@ export default function ProductsPage({ searchParams }: { searchParams?: SP }) {
             <li key={c.id}>
               <a
                 href={`/products?category=${c.slug}`}
-                className={`rounded-full border px-3 py-1 text-sm ${c.slug === categorySlug ? "bg-black text-white" : "bg-white"}`}
+                className={`rounded-full border px-3 py-1 text-sm ${
+                  c.slug === categorySlug ? "bg-black text-white" : "bg-white"
+                }`}
               >
                 {c.name}
               </a>

@@ -5,3 +5,7 @@
 :root {
   color-scheme: light;
 }
+
+.prose a {
+  text-decoration: underline;
+}

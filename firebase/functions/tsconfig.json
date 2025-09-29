@@ -1,22 +1,16 @@
 {
   "compilerOptions": {
-    "target": "ES2021",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
-    "lib": ["ES2021"],
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist",
     "rootDir": "src",
-    "outDir": "lib",
-    "types": ["node"],
     "strict": true,
-    "skipLibCheck": true,
     "esModuleInterop": true,
-    "noEmit": false,
-    "baseUrl": ".",
-    "typeRoots": ["./node_modules/@types", "./src/types"],
-    "paths": {
-      "@affiscope/shared-types": ["./shared-types/dist"],
-      "@affiscope/shared-types/*": ["./shared-types/dist/*"]
-    }
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true
   },
-  "include": ["src"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }

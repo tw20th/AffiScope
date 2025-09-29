@@ -8,14 +8,56 @@
     "logoUrl": "/logos/chairscope.svg",
     "theme": "dark"
   },
+
   "categoryPreset": ["gaming-chair"],
-  "affiliate": {
-    "amazon": { "partnerTag": "xxxxx-22" }
+
+  "productRules": {
+    "categoryId": "gaming-chair",
+    "includeKeywords": [],
+    "excludeKeywords": [
+      "替えカバー",
+      "キャスター",
+      "クッション単品",
+      "座布団",
+      "マット",
+      "デスク",
+      "フットレスト単品",
+      "ヘッドレスト単品",
+      "肘置き単品"
+    ]
   },
-  "features": {
-    "blogs": true,
-    "ranking": true
+
+  "affiliate": { "amazon": { "partnerTag": "tw20th0c-22" } },
+
+  "features": { "blogs": true, "ranking": true },
+
+  "seeds": {
+    "asins": ["B086JTCGZR", "B08L8LG4M3", "B07Y8Y2V8D", "B08D6Z7S94"]
   },
+
+  "discovery": {
+    "searchKeywords": [
+      "ゲーミングチェア",
+      "ゲーミング チェア",
+      "gaming chair",
+      "オフィスチェア",
+      "メッシュチェア",
+      "ハイバック チェア",
+      "リクライニング チェア",
+      "オットマン 付き",
+      "腰痛 チェア",
+      "ランバーサポート"
+    ],
+    "searchIndex": "OfficeProducts",
+    "maxPerRun": 25,
+    "maxSearchItemPage": 8,
+    "randomizePage": true,
+    "relaxedOnFirstImport": true,
+    "cooldownDays": 10,
+    "minPrice": 5000,
+    "maxPrice": 120000
+  },
+
   "createdAt": 0,
   "updatedAt": 0
 }

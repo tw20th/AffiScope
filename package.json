@@ -5,7 +5,10 @@
     "build": "pnpm -r --filter ./packages/shared-types run build && pnpm -C apps/web build && pnpm -C firebase/functions build",
     "typecheck": "tsc -b",
     "dev:web": "pnpm -C apps/web dev",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "prepare:functions": "pnpm -C packages/shared-types build && pnpm -C firebase run sync:types",
+    "dev:functions": "pnpm run prepare:functions && pnpm -C firebase/functions serve",
+    "emulators": "pnpm run prepare:functions && pnpm -C firebase emulators"
   },
   "devDependencies": {
     "typescript": "^5.9.2"

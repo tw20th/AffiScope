@@ -1,13 +1,6 @@
 import paapi5sdk from "paapi5-nodejs-sdk";
+import { withRetry } from "../../lib/retry.js";
 
-type MaybeClient = {
-  accessKey?: string;
-  secretKey?: string;
-  host?: string;
-  region?: string;
-  setHost?: (h: string) => void;
-  setRegion?: (r: string) => void;
-};
 interface PaapiApi {
   searchItems: (
     req: Record<string, unknown>,
@@ -15,12 +8,12 @@ interface PaapiApi {
   ) => void;
 }
 interface PaapiModule {
-  ApiClient: { instance: MaybeClient };
+  ApiClient: { instance: any };
   DefaultApi: new () => PaapiApi;
   SearchItemsRequest: new () => Record<string, unknown>;
 }
 
-type Item = {
+export type Item = {
   asin: string;
   title?: string;
   brand?: string;
@@ -41,30 +34,19 @@ function get<T>(obj: unknown, path: string[]): T | undefined {
   return cur as T;
 }
 
-async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
-  let last: unknown;
-  for (let i = 0; i < tries; i++) {
-    try {
-      return await fn();
-    } catch (e: any) {
-      last = e;
-      const status = e?.status;
-      const retriable =
-        status === 429 ||
-        (status >= 500 && status < 600) ||
-        /Throttl|TooMany|Limit/i.test(
-          String(e?.message || "") + String(e?.response?.text || "")
-        );
-      if (!retriable || i === tries - 1) throw last;
-      await new Promise((r) => setTimeout(r, 500 * Math.pow(2, i)));
-    }
-  }
-  throw last;
-}
+// ✅ SearchItems 用の正しい Resources（DetailPageURL は入れない）
+const SEARCH_RESOURCES = [
+  "ItemInfo.Title",
+  "ItemInfo.ByLineInfo",
+  "Images.Primary.Large",
+  "Offers.Listings.Price",
+] as const;
 
 export async function searchAmazonItems(
   keyword: string,
-  limit = 10
+  limit = 10,
+  page = 1,
+  opts?: { sortBy?: string; searchIndex?: string }
 ): Promise<Item[]> {
   const ACCESS_KEY = process.env.AMAZON_ACCESS_KEY;
   const SECRET_KEY = process.env.AMAZON_SECRET_KEY;
@@ -72,6 +54,7 @@ export async function searchAmazonItems(
   if (!ACCESS_KEY || !SECRET_KEY || !PARTNER_TAG)
     throw new Error("Missing PA-API creds.");
 
+  // 署名干渉を避ける
   delete (process.env as any).AWS_REGION;
   delete (process.env as any).AWS_DEFAULT_REGION;
   delete (process.env as any).AMAZON_REGION;
@@ -80,9 +63,7 @@ export async function searchAmazonItems(
   const client = Paapi.ApiClient.instance;
   client.accessKey = ACCESS_KEY;
   client.secretKey = SECRET_KEY;
-  client.setHost?.("webservices.amazon.co.jp");
   client.host = "webservices.amazon.co.jp";
-  client.setRegion?.("us-west-2");
   client.region = "us-west-2";
 
   const api = new Paapi.DefaultApi();
@@ -91,12 +72,10 @@ export async function searchAmazonItems(
   req["PartnerType"] = "Associates";
   req["Keywords"] = keyword;
   req["ItemCount"] = Math.min(Math.max(limit, 1), 10);
-  req["Resources"] = [
-    "ItemInfo.Title",
-    "ItemInfo.ByLineInfo",
-    "Images.Primary.Large",
-    "Offers.Listings.Price",
-  ];
+  req["ItemPage"] = Math.min(Math.max(page, 1), 10);
+  if (opts?.sortBy) req["SortBy"] = opts.sortBy;
+  if (opts?.searchIndex) req["SearchIndex"] = opts.searchIndex;
+  req["Resources"] = [...SEARCH_RESOURCES];
 
   const data = await withRetry(
     () =>
@@ -104,7 +83,14 @@ export async function searchAmazonItems(
         api.searchItems(req, (e, d) => (e ? rej(e) : res(d)))
       ),
     3
-  );
+  ).catch((e: any) => {
+    const status = e?.status ?? e?.response?.status ?? e?.code ?? "";
+    const body =
+      e?.response?.data ?? e?.response?.text ?? e?.message ?? String(e);
+    console.error("[searchAmazonItems] failed:", { status, body });
+    throw e;
+  });
+
   const items = get<unknown[]>(data, ["SearchResult", "Items"]) ?? [];
   const out: Item[] = [];
   for (const it of items) {
@@ -122,6 +108,7 @@ export async function searchAmazonItems(
       ]),
       imageUrl: get<string>(it, ["Images", "Primary", "Large", "URL"]),
       price: get<number>(it, ["Offers", "Listings", "0", "Price", "Amount"]),
+      // ← リソース指定不要でも返ってくる
       url: (it["DetailPageURL"] as string | undefined) ?? undefined,
     });
   }

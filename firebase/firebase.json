@@ -1,9 +1,9 @@
 {
   "functions": { "source": "functions" },
   "firestore": {
-    "rules": "firestore.rules"
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
   },
-  "indexes": "firestore.indexes.json",
   "emulators": {
     "functions": { "port": 5001, "host": "127.0.0.1" },
     "firestore": { "port": 8080 },

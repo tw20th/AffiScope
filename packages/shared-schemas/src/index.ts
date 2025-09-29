@@ -1,3 +1,4 @@
+// packages/shared-schemas/src/index.ts
 import { z } from "zod";
 
 export const OfferSourceSchema = z.enum(["amazon", "rakuten"]);

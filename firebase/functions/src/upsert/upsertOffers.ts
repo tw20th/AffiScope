@@ -1,8 +1,8 @@
 // firebase/functions/src/upsert/upsertOffers.ts
 import { getApps, initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 
-type OfferInput = { price: number; url: string };
+type OfferInput = { price?: number; url: string };
 const DEFAULT_SITE_ID = process.env.SITE_ID || "affiscope";
 
 function db() {
@@ -10,40 +10,48 @@ function db() {
   return getFirestore();
 }
 
-/** 既存 doc でも siteId が欠けていたら補完する。 */
 export async function upsertOffers(
   asin: string,
   offer: OfferInput,
   siteId = DEFAULT_SITE_ID
 ) {
-  const ref = db().collection("products").doc(asin);
-  const snap = await ref.get();
   const now = Date.now();
+  const id = `${siteId}_${asin}`;
+  const ref = db().collection("products").doc(id);
+  const snap = await ref.get();
+
+  const hasPrice = typeof offer.price === "number";
 
   if (!snap.exists) {
     await ref.set(
       {
         asin,
-        siteId, // ← 必須!!
+        siteId,
         title: `商品 ${asin}`,
         brand: "Unknown",
         imageUrl: "https://placehold.co/400x300?text=No+Image",
         categoryId: "mobile-battery",
-        offers: [
-          {
-            source: "amazon",
-            price: offer.price,
-            url: offer.url,
-            lastSeenAt: now,
-          },
-        ],
-        priceHistory: [{ ts: now, source: "amazon", price: offer.price }],
-        bestPrice: {
-          price: offer.price,
-          source: "amazon",
-          url: offer.url,
-          updatedAt: now,
-        },
+        offers: hasPrice
+          ? [
+              {
+                source: "amazon",
+                price: offer.price!,
+                url: offer.url,
+                lastSeenAt: now,
+              },
+            ]
+          : [],
+        priceHistory: hasPrice
+          ? [{ ts: now, source: "amazon", price: offer.price! }]
+          : [],
+        bestPrice: hasPrice
+          ? {
+              price: offer.price!,
+              source: "amazon",
+              url: offer.url,
+              updatedAt: now,
+            }
+          : undefined,
         views: 0,
         createdAt: now,
         updatedAt: now,
@@ -57,34 +65,52 @@ export async function upsertOffers(
   const offers = Array.isArray((data as any).offers)
     ? (data as any).offers
     : [];
-  const newOffers = [
-    ...offers.filter((o: any) => o.source !== "amazon"),
-    { source: "amazon", price: offer.price, url: offer.url, lastSeenAt: now },
-  ];
+  const others = offers.filter((o: any) => o.source !== "amazon");
+  const newAmazon = hasPrice
+    ? [
+        {
+          source: "amazon",
+          price: offer.price!,
+          url: offer.url,
+          lastSeenAt: now,
+        },
+      ]
+    : [];
 
-  const best = newOffers.reduce(
-    (min: any, o: any) => (o.price < min.price ? o : min),
-    newOffers[0]
-  );
+  const newOffers = [...others, ...newAmazon];
+
+  // bestPrice は価格があるときだけ再計算
+  let best = (data as any).bestPrice ?? null;
+  if (newOffers.length > 0) {
+    best = newOffers.reduce(
+      (min: any, o: any) =>
+        min && typeof min.price === "number" && min.price <= o.price ? min : o,
+      null as any
+    );
+  }
 
   const priceHistory = Array.isArray((data as any).priceHistory)
     ? (data as any).priceHistory
     : [];
-  const last = priceHistory[priceHistory.length - 1];
-  if (!last || last.price !== offer.price) {
-    priceHistory.push({ ts: now, source: "amazon", price: offer.price });
+  if (hasPrice) {
+    const last = priceHistory[priceHistory.length - 1];
+    if (!last || last.price !== offer.price) {
+      priceHistory.push({ ts: now, source: "amazon", price: offer.price! });
+    }
   }
 
   await ref.set(
     {
-      siteId: (data as any).siteId || siteId, // ← 既存 doc が欠けていたら補完
+      siteId: (data as any).siteId || siteId,
       offers: newOffers,
-      bestPrice: {
-        price: best.price,
-        source: best.source,
-        url: best.url,
-        updatedAt: now,
-      },
+      bestPrice: best
+        ? {
+            price: best.price,
+            source: best.source,
+            url: best.url,
+            updatedAt: now,
+          }
+        : (data as any).bestPrice ?? undefined,
       priceHistory,
       updatedAt: now,
     },

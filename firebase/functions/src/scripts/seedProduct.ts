@@ -1,7 +1,11 @@
-// firebase/functions/src/scripts/seedProduct.ts（差分）
-import "dotenv/config";
-import { getDb } from "./_firestoreClient";
-import { computeBestPrice } from "../utils/price";
+// firebase/functions/src/scripts/seedProduct.ts
+try {
+  if (process.env.FUNCTIONS_EMULATOR || !process.env.K_SERVICE) {
+    await import("dotenv/config");
+  }
+} catch {}
+import { getDb } from "./_firestoreClient.js";
+import { computeBestPrice } from "../utils/price.js";
 
 async function main() {
   const db = getDb();

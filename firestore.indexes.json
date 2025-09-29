@@ -44,6 +44,15 @@
         { "fieldPath": "brand", "order": "ASCENDING" },
         { "fieldPath": "bestPrice.price", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "blogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "siteId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

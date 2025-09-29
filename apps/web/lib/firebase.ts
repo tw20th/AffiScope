@@ -1,4 +1,6 @@
 // apps/web/lib/firebase.ts
+"use client";
+
 import { getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import {
   getFirestore,
@@ -10,7 +12,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 import type { Product } from "@affiscope/shared-types";
-import { SITE_ID } from "./site"; // 事前に apps/web/lib/site.ts を用意（NEXT_PUBLIC_SITE_ID を読む）
+import { SITE_ID } from "./site";
 
 let appSingleton: FirebaseApp | undefined;
 let dbSingleton: Firestore | undefined;
@@ -30,39 +32,38 @@ export function getApp(): FirebaseApp {
   return appSingleton;
 }
 
+/** ブラウザ専用 */
 export function getDb(): Firestore {
+  if (typeof window === "undefined") {
+    throw new Error(
+      "getDb() must be called in the browser (client components)."
+    );
+  }
   if (!dbSingleton) {
     dbSingleton = getFirestore(getApp());
   }
   return dbSingleton;
 }
 
-// page.tsx 等からはこれを import すればOK
-export const db = getDb();
+// ※ db の即時初期化は置かない
 
-/** number(ms) / Timestamp → number(ms) */
 export const numOrTsToNumber = (v: unknown): number => {
   if (typeof v === "number") return v;
   if (v instanceof Timestamp) return v.toMillis();
   return Date.now();
 };
 
-/** Product converter（docId=asin 前提） */
 export const productConverter: FirestoreDataConverter<Product> = {
   toFirestore(p: Product) {
-    // docId に asin を使うため、保存するフィールドからは除外
     const { asin, ...rest } = p;
     return {
       ...rest,
-      // 既存値があれば尊重しつつ、updatedAt は常に更新
       createdAt: p.createdAt ?? serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
   },
-
   fromFirestore(snapshot) {
     const data = snapshot.data() as any;
-
     const bestPrice = data.bestPrice
       ? {
           price: Number(data.bestPrice.price),
@@ -70,16 +71,15 @@ export const productConverter: FirestoreDataConverter<Product> = {
           url: String(data.bestPrice.url),
           updatedAt: numOrTsToNumber(data.bestPrice.updatedAt),
         }
-      : undefined; // optional のままにする
+      : undefined;
 
-    // Product 型に一致する形で返す（id は含めない／siteId は必須）
     const product: Product = {
       asin: snapshot.id,
       title: data.title ?? "",
       brand: data.brand ?? undefined,
       imageUrl: data.imageUrl ?? undefined,
       categoryId: data.categoryId,
-      siteId: data.siteId ?? SITE_ID, // 既存 doc に無い場合は既定で補完
+      siteId: data.siteId ?? SITE_ID,
       tags: Array.isArray(data.tags) ? data.tags : [],
       specs: data.specs ?? undefined,
       offers: Array.isArray(data.offers) ? data.offers : [],
@@ -90,7 +90,6 @@ export const productConverter: FirestoreDataConverter<Product> = {
       createdAt: numOrTsToNumber(data.createdAt),
       updatedAt: numOrTsToNumber(data.updatedAt),
     };
-
     return product;
   },
 };

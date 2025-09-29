@@ -2,11 +2,13 @@
   "name": "@affiscope/firebase-root",
   "private": true,
   "scripts": {
-    "sync:types": "pnpm -C ../packages/shared-types run build && node -e \"const fs=require('fs'),path=require('path');const dst=path.resolve(__dirname,'functions/shared-types');fs.rmSync(dst,{recursive:true,force:true});fs.mkdirSync(path.join(dst,'dist'),{recursive:true});fs.cpSync(path.resolve(__dirname,'../packages/shared-types/dist'),path.join(dst,'dist'),{recursive:true});fs.writeFileSync(path.join(dst,'package.json'),JSON.stringify({name:'@affiscope/shared-types',version:'0.0.1',type:'module',main:'dist/index.js',types:'dist/index.d.ts'},null,2));\"",
-    "predeploy:bundle-types": "pnpm run sync:types",
-    "deploy": "pnpm run predeploy:bundle-types && firebase deploy --only functions,firestore",
-    "deploy:indexes": "firebase deploy --only firestore:indexes",
-    "emulators": "firebase emulators:start"
+    "sync:types": "pnpm -C ../packages/shared-types run build && node scripts/syncSharedTypes.cjs",
+    "sync:schemas": "pnpm -C ../packages/shared-schemas run build && node scripts/syncSharedSchemas.cjs",
+    "predeploy:bundle-types": "pnpm run sync:types && pnpm run sync:schemas",
+    "deploy": "firebase deploy",
+    "deploy:functions": "pnpm run predeploy:bundle-types && firebase deploy --only functions",
+    "deploy:rules": "firebase deploy --only firestore:rules",
+    "deploy:indexes": "firebase deploy --only firestore:indexes"
   },
   "devDependencies": {
     "firebase-tools": "^13.0.0"

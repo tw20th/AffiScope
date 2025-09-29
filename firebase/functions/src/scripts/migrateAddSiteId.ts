@@ -1,6 +1,10 @@
-// firebase/functions/src/scripts/migrateAddSiteId.ts（置き換え）
-import "dotenv/config";
-import { getDb } from "./_firestoreClient";
+// firebase/functions/src/scripts/migrateAddSiteId.ts
+try {
+  if (process.env.FUNCTIONS_EMULATOR || !process.env.K_SERVICE) {
+    await import("dotenv/config");
+  }
+} catch {}
+import { getDb } from "./_firestoreClient.js";
 
 const SITE_ID = process.env.SITE_ID ?? "affiscope";
 

@@ -1,8 +1,12 @@
 // firebase/functions/src/scripts/seedFromAmazon.ts
-import "dotenv/config";
+try {
+  if (process.env.FUNCTIONS_EMULATOR || !process.env.K_SERVICE) {
+    await import("dotenv/config");
+  }
+} catch {}
 import * as admin from "firebase-admin";
 import paapi5sdk from "paapi5-nodejs-sdk";
-import { upsertProductSeed } from "../upsert/upsertProduct";
+import { upsertProductSeed } from "../upsert/upsertProduct.js";
 
 if (admin.apps.length === 0) admin.initializeApp();
 admin.firestore().settings({ ignoreUndefinedProperties: true });

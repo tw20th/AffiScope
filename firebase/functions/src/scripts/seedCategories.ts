@@ -1,26 +1,31 @@
-import 'dotenv/config';
-import { getDb } from './_firestoreClient';
+// firebase/functions/src/scripts/seedCategories.ts
+try {
+  if (process.env.FUNCTIONS_EMULATOR || !process.env.K_SERVICE) {
+    await import("dotenv/config");
+  }
+} catch {}
+import { getDb } from "./_firestoreClient.js";
 
 async function main() {
   const db = getDb();
   const data = [
     {
-      id: 'mobile-battery',
-      name: 'モバイルバッテリー',
-      path: ['electronics', 'mobile-battery'],
+      id: "mobile-battery",
+      name: "モバイルバッテリー",
+      path: ["electronics", "mobile-battery"],
       order: 1,
     },
     {
-      id: 'fast-charging',
-      name: '急速充電',
-      path: ['electronics', 'mobile-battery', 'fast-charging'],
+      id: "fast-charging",
+      name: "急速充電",
+      path: ["electronics", "mobile-battery", "fast-charging"],
       order: 2,
     },
   ];
   for (const c of data) {
-    await db.collection('categories').doc(c.id).set(c, { merge: true });
+    await db.collection("categories").doc(c.id).set(c, { merge: true });
   }
-  console.log('✅ categories seed done');
+  console.log("✅ categories seed done");
 }
 
 main().catch((e) => {

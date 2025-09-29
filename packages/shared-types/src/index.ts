@@ -34,8 +34,7 @@ export interface Product {
   brand?: string;
   imageUrl?: string;
   categoryId: string;
-  /** ← ここを必須化 */
-  siteId: string;
+  siteId: string; // 必須
 
   tags?: string[];
   specs?: ProductSpecs;
@@ -67,7 +66,7 @@ export interface Blog {
 
 export interface Category {
   id: string; // = docId
-  siteId: string; // ★追加（必須）
+  siteId: string; // 必須
   name: string;
   slug: string;
   parentId?: string;
@@ -86,5 +85,3 @@ export interface Improvement {
   suggestions: string[];
   createdAt: number;
 }
-
-export * from "./schemas";
