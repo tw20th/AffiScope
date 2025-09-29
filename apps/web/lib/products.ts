@@ -9,6 +9,7 @@ import {
   where,
   type DocumentSnapshot,
   type QueryConstraint,
+  type Firestore, // ← 追加（なくてもOKだが補助用）
 } from "firebase/firestore";
 import type { Product } from "@affiscope/shared-types";
 import { getDb, productConverter } from "./firebase";
@@ -17,7 +18,7 @@ export type SortKey = "price" | "createdAt";
 export type SortOrder = "asc" | "desc";
 
 export interface FetchParams {
-  siteId: string; // 必須
+  siteId: string;
   categoryId: string;
   brand?: string;
   sortBy: "price" | "createdAt";
@@ -40,7 +41,15 @@ export async function fetchProducts(params: FetchParams): Promise<{
     cursor,
   } = params;
 
-  const col = collection(getDb(), "products").withConverter(productConverter);
+  // ★ getDb() の null をガードして Firestore 型に絞る
+  const db = getDb();
+  if (!db) {
+    // SSR/ビルド時に直呼びされない想定だが、型のために明示
+    throw new Error(
+      "Firestore has not been initialized (getDb returned null)."
+    );
+  }
+  const col = collection(db, "products").withConverter(productConverter);
 
   const constraints: QueryConstraint[] = [
     where("siteId", "==", siteId),
@@ -66,14 +75,13 @@ export async function fetchProducts(params: FetchParams): Promise<{
   return { items, nextCursor };
 }
 
-// 呼び出し側の想定：siteId はページ側や config から受け取る
 export async function fetchBrands(
-  siteId: string, // ★ 追加
+  siteId: string,
   categoryId: string,
   sampleSize = 200
 ): Promise<string[]> {
   const { items } = await fetchProducts({
-    siteId, // ★ 追加
+    siteId,
     categoryId,
     sortBy: "createdAt",
     order: "desc",
