@@ -9,3 +9,12 @@
 .prose a {
   text-decoration: underline;
 }
+
+/* apps/web/app/globals.css の末尾などに */
+*:focus-visible {
+  outline: 2px solid rgba(16, 185, 129, 0.5); /* brand系の薄いアウトライン */
+  outline-offset: 2px;
+}
+::selection {
+  background: rgba(16, 185, 129, 0.15);
+}

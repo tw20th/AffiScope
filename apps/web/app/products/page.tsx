@@ -5,9 +5,23 @@ import ProductCard from "@/components/products/ProductCard";
 import CategoryTabs, {
   type CategoryTab,
 } from "@/components/categories/CategoryTabs";
+import Link from "next/link";
 
 export const revalidate = 60;
 export const dynamic = "force-dynamic";
+
+/** ===== utils ===== */
+function timeago(ts?: number) {
+  if (!ts) return "—";
+  const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return `${s}秒前`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}分前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}時間前`;
+  const d = Math.floor(h / 24);
+  return `${d}日前`;
+}
 
 /** categories を siteId だけで取得 → 取得後に order で並べ替え（インデックス不要） */
 async function fetchAllCategories(
@@ -32,7 +46,7 @@ async function fetchAllCategories(
   return rows;
 }
 
-/** サイト設定（REST）— page.tsx と同じローカル実装 */
+/** サイト設定（REST）— トップの実装と同等の軽量版 */
 async function loadSiteConfigLocal(siteId: string): Promise<{
   siteId: string;
   displayName?: string;
@@ -73,7 +87,7 @@ async function fetchProductsByCategoryId(
         { field: "siteId", value: siteId },
         { field: "categoryId", value: categoryId },
       ],
-      limit: 100,
+      limit: 200,
     };
     const q = withOrder
       ? {
@@ -125,7 +139,7 @@ async function fetchProductsByCategoryId(
     const docs = await fsRunQuery({
       collection: "products",
       where: [{ field: "siteId", value: siteId }],
-      limit: 100,
+      limit: 200,
     }).catch(() => []);
     rows = docs.map((d: any) => {
       const f = d.fields;
@@ -162,16 +176,11 @@ async function fetchProductsByCategoryId(
       } as Product;
     });
   }
-
-  rows.sort(
-    (a, b) =>
-      (a.bestPrice?.price ?? Number.POSITIVE_INFINITY) -
-      (b.bestPrice?.price ?? Number.POSITIVE_INFINITY)
-  );
   return rows;
 }
 
-type SP = { category?: string };
+type SortKey = "price_asc" | "price_desc" | "newest";
+type SP = { category?: string; sort?: SortKey; priced?: string };
 
 export default async function ProductsPage({
   searchParams,
@@ -180,47 +189,135 @@ export default async function ProductsPage({
 }) {
   const siteId = process.env.NEXT_PUBLIC_SITE_ID ?? getServerSiteId();
   const categorySlug = searchParams?.category ?? "gaming-chair";
+  const sort: SortKey = (searchParams?.sort as SortKey) ?? "price_asc";
+  const pricedOnly = searchParams?.priced === "1";
 
-  // 1) Firestoreからカテゴリ
+  // 1) カテゴリ
   let cats = await fetchAllCategories(siteId);
-
-  // 2) 取れなければサイト設定の categoryPreset をフォールバックに
   if (cats.length === 0) {
     const site = await loadSiteConfigLocal(siteId).catch(() => null);
     const preset = site?.categoryPreset ?? [];
-    cats = preset.map((slug) => ({
-      id: slug,
-      name: slug, // 表示名未設定ならとりあえず slug
-      slug,
-      order: 0,
-    }));
+    cats = preset.map((slug) => ({ id: slug, name: slug, slug, order: 0 }));
   }
-
-  // 3) さらに何もなければ「現在のカテゴリだけ」をタブ表示
   if (cats.length === 0) {
     cats = [
       { id: categorySlug, name: categorySlug, slug: categorySlug, order: 0 },
     ];
   }
 
-  const items = await fetchProductsByCategoryId(siteId, categorySlug);
+  // 2) 商品取得 → フィルター/並び替え（サーバー側で実施）
+  let items = await fetchProductsByCategoryId(siteId, categorySlug);
+
+  if (pricedOnly) {
+    items = items.filter((p) => typeof p.bestPrice?.price === "number");
+  }
+
+  if (sort === "price_asc" || sort === "price_desc") {
+    items.sort((a, b) => {
+      const av = a.bestPrice?.price ?? Number.POSITIVE_INFINITY;
+      const bv = b.bestPrice?.price ?? Number.POSITIVE_INFINITY;
+      return sort === "price_asc" ? av - bv : bv - av;
+    });
+  } else if (sort === "newest") {
+    items.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  }
+
+  // 3) メタ情報（最終更新 = 一覧中の最大 updatedAt / bestPrice.updatedAt）
+  const lastUpdated = items.reduce<number>((max, p) => {
+    const u = p.bestPrice?.updatedAt ?? p.updatedAt ?? 0;
+    return u > max ? u : max;
+  }, 0);
+
+  // 4) クエリリンク生成
+  const href = (next: Partial<SP>) => {
+    const params = new URLSearchParams();
+    params.set("category", next.category ?? categorySlug);
+    params.set("sort", (next.sort ?? sort) as string);
+    if ((next.priced ?? (pricedOnly ? "1" : "")) === "1")
+      params.set("priced", "1");
+    return `/products?${params.toString()}`;
+  };
 
   return (
     <main className="mx-auto max-w-6xl p-6">
+      {/* breadcrumb */}
       <nav className="text-sm text-gray-500">
-        <a href="/products" className="underline">
+        <Link href="/" className="underline">
           ホーム
-        </a>
+        </Link>
       </nav>
 
+      {/* H1 */}
       <h1 className="mt-3 text-2xl font-bold">商品一覧（{categorySlug}）</h1>
 
-      {/* カテゴリタブ（必ず何かしら出る） */}
+      {/* カテゴリタブ */}
       <CategoryTabs
         categories={cats.map(({ id, name, slug }) => ({ id, name, slug }))}
         activeSlug={categorySlug}
       />
 
+      {/* コントロールバー（信頼の見える化） */}
+      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border bg-white px-4 py-2 text-sm">
+        <div className="flex items-center gap-2">
+          <span className="opacity-70">表示順:</span>
+          <Link
+            href={href({ sort: "price_asc" })}
+            aria-current={sort === "price_asc" ? "page" : undefined}
+            className={`rounded px-2 py-1 ${
+              sort === "price_asc"
+                ? "bg-gray-100 font-medium"
+                : "hover:underline"
+            }`}
+          >
+            価格の安い順
+          </Link>
+          <Link
+            href={href({ sort: "price_desc" })}
+            aria-current={sort === "price_desc" ? "page" : undefined}
+            className={`rounded px-2 py-1 ${
+              sort === "price_desc"
+                ? "bg-gray-100 font-medium"
+                : "hover:underline"
+            }`}
+          >
+            価格の高い順
+          </Link>
+          <Link
+            href={href({ sort: "newest" })}
+            aria-current={sort === "newest" ? "page" : undefined}
+            className={`rounded px-2 py-1 ${
+              sort === "newest" ? "bg-gray-100 font-medium" : "hover:underline"
+            }`}
+          >
+            新着順
+          </Link>
+        </div>
+
+        <div className="mx-2 h-4 w-px bg-gray-200" />
+
+        <div className="flex items-center gap-2">
+          <span className="opacity-70">フィルター:</span>
+          <Link
+            href={href({ priced: pricedOnly ? "" : "1" })}
+            className={`rounded px-2 py-1 ${
+              pricedOnly ? "bg-gray-100 font-medium" : "hover:underline"
+            }`}
+          >
+            価格ありのみ
+          </Link>
+          <span className="opacity-60">（{items.length}件）</span>
+        </div>
+
+        <div className="mx-2 h-4 w-px bg-gray-200" />
+
+        <div className="flex items-center gap-2 opacity-80">
+          <span>データ元: Amazon</span>
+          <span>最終更新: {timeago(lastUpdated)}</span>
+          <span className="opacity-70">※本ページは広告を含みます</span>
+        </div>
+      </div>
+
+      {/* リスト */}
       {items.length === 0 ? (
         <p className="mt-4 text-gray-500">該当商品がありません。</p>
       ) : (

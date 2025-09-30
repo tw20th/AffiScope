@@ -4,20 +4,13 @@ import type { Product } from "@affiscope/shared-types";
 import { fsRunQuery, vNum, vStr, docIdFromName } from "@/lib/firestore-rest";
 import { getServerSiteId } from "@/lib/site-server";
 import ProductCard from "@/components/products/ProductCard";
+import TrustBar from "@/components/common/TrustBar";
+import SiteFooter from "@/components/common/SiteFooter";
 
 export const revalidate = 60;
 export const dynamic = "force-dynamic";
 
-// ========= ユーティリティ =========
-function jpy(n?: number) {
-  if (typeof n !== "number") return "";
-  return new Intl.NumberFormat("ja-JP", {
-    style: "currency",
-    currency: "JPY",
-  }).format(n);
-}
-
-// ========= サイト設定（ローカル実装） =========
+/** ===== サイト設定（Firestore REST直読・ENV未設定でも安全にフォールバック） ===== */
 type SiteConfig = {
   siteId: string;
   displayName?: string;
@@ -26,10 +19,10 @@ type SiteConfig = {
   [k: string]: unknown;
 };
 
-async function loadSiteConfigLocal(siteId: string): Promise<SiteConfig> {
-  const projectId = process.env.NEXT_PUBLIC_FB_PROJECT_ID!;
-  const apiKey = process.env.NEXT_PUBLIC_FB_API_KEY!;
-  if (!projectId || !apiKey) throw new Error("FB env missing");
+async function loadSiteConfigLocal(siteId: string): Promise<SiteConfig | null> {
+  const projectId = process.env.NEXT_PUBLIC_FB_PROJECT_ID;
+  const apiKey = process.env.NEXT_PUBLIC_FB_API_KEY;
+  if (!projectId || !apiKey) return null; // ENV未設定時はnullで返す
 
   const url = new URL(
     `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/sites/${encodeURIComponent(
@@ -39,7 +32,7 @@ async function loadSiteConfigLocal(siteId: string): Promise<SiteConfig> {
   url.searchParams.set("key", apiKey);
 
   const res = await fetch(url.toString(), { cache: "no-store" });
-  if (!res.ok) throw new Error(`fetch site failed: ${res.status}`);
+  if (!res.ok) return null;
 
   const json: any = await res.json();
   const fields = json.fields ?? {};
@@ -63,7 +56,7 @@ async function loadSiteConfigLocal(siteId: string): Promise<SiteConfig> {
   };
 }
 
-/** 最新ブログ N件（公開のみ） */
+/** ===== 最新ブログ N件（公開のみ） ===== */
 async function fetchLatestBlogs(siteId: string, limit = 3) {
   try {
     const docs = await fsRunQuery({
@@ -83,6 +76,7 @@ async function fetchLatestBlogs(siteId: string, limit = 3) {
       updatedAt: vNum(d.fields, "updatedAt") ?? 0,
     }));
   } catch {
+    // orderBy未対応環境などでも最低限動くフォールバック
     const docs = await fsRunQuery({
       collection: "blogs",
       where: [
@@ -101,7 +95,7 @@ async function fetchLatestBlogs(siteId: string, limit = 3) {
   }
 }
 
-/** ピックアップ商品 N件（createdAt desc） */
+/** ===== ピックアップ商品 N件（createdAt desc） ===== */
 async function fetchFeaturedProducts(
   siteId: string,
   categoryId?: string,
@@ -164,14 +158,15 @@ async function fetchFeaturedProducts(
   return run(false);
 }
 
-// ========= ページ本体 =========
+/** ===== ページ本体 ===== */
 export default async function Page() {
   // ENV を最優先（cookieが古くても上書き）
   const siteId = process.env.NEXT_PUBLIC_SITE_ID ?? getServerSiteId();
 
   const site =
-    (await loadSiteConfigLocal(siteId).catch(() => null)) ??
+    (await loadSiteConfigLocal(siteId)) ??
     ({
+      siteId,
       displayName: "AffiScope",
       brand: { primary: "#16a34a", accent: "#0ea5e9", logoUrl: "" },
       categoryPreset: ["gaming-chair"],
@@ -187,71 +182,81 @@ export default async function Page() {
   ]);
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-10">
-      <header className="mb-8">
-        <h1 className="text-2xl md:text-3xl font-bold">
-          {site.displayName ?? "AffiScope"}
-        </h1>
-        <p className="text-sm opacity-70">最新の商品とブログを自動更新中</p>
-      </header>
+    <>
+      <main className="mx-auto max-w-6xl px-6 py-10">
+        <header className="mb-4">
+          <h1 className="text-2xl md:text-3xl font-bold">
+            オフィスチェアの比較・最安情報
+          </h1>
+          <p className="text-sm opacity-70">
+            Amazonの価格と新着ブログを毎日自動更新
+          </p>
+        </header>
 
-      {/* Featured Products */}
-      <section className="mb-12">
-        <div className="flex items-baseline justify-between mb-3">
-          <h2 className="text-xl font-semibold">注目の商品</h2>
-          <Link href="/products" className="text-sm underline">
-            すべて見る
-          </Link>
-        </div>
+        <TrustBar
+          dataSource="Amazon"
+          updatedText="毎日自動更新"
+          note="本ページは広告を含みます"
+        />
 
-        {featured.length === 0 ? (
-          <div className="rounded-lg border p-6 text-sm opacity-70">
-            まだ商品がありません。クローラや同期をお待ちください。
+        {/* Featured Products */}
+        <section className="mb-12">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-xl font-semibold">注目の商品</h2>
+            <Link href="/products" className="text-sm underline">
+              すべて見る
+            </Link>
           </div>
-        ) : (
-          <ul className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {featured.map((p) => (
-              <ProductCard key={p.asin} p={p} />
-            ))}
-          </ul>
-        )}
-      </section>
 
-      {/* Latest Blogs */}
-      <section className="mb-6">
-        <div className="flex items-baseline justify-between mb-3">
-          <h2 className="text-xl font-semibold">新着ブログ</h2>
-          <Link href="/blog" className="text-sm underline">
-            一覧へ
-          </Link>
-        </div>
+          {featured.length === 0 ? (
+            <div className="rounded-lg border p-6 text-sm opacity-70">
+              まだ商品がありません。クローラや同期をお待ちください。
+            </div>
+          ) : (
+            <ul className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              {featured.map((p) => (
+                <ProductCard key={p.asin} p={p} />
+              ))}
+            </ul>
+          )}
+        </section>
 
-        {latestBlogs.length === 0 ? (
-          <div className="rounded-lg border p-6 text-sm opacity-70">
-            公開済みのブログがありません。
+        {/* Latest Blogs */}
+        <section className="mb-6">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-xl font-semibold">新着ブログ</h2>
+            <Link href="/blog" className="text-sm underline">
+              一覧へ
+            </Link>
           </div>
-        ) : (
-          <ul className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {latestBlogs.map((b) => (
-              <li
-                key={b.slug}
-                className="rounded-xl border p-4 hover:shadow-sm transition"
-              >
-                <Link href={`/blog/${b.slug}`}>
-                  <div className="text-base font-medium line-clamp-2 mb-1">
-                    {b.title}
-                  </div>
-                  {b.summary && (
-                    <p className="text-sm opacity-70 line-clamp-3">
-                      {b.summary}
-                    </p>
-                  )}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </main>
+
+          {latestBlogs.length === 0 ? (
+            <div className="rounded-lg border p-6 text-sm opacity-70">
+              公開済みのブログがありません。
+            </div>
+          ) : (
+            <ul className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {latestBlogs.map((b) => (
+                <li
+                  key={b.slug}
+                  className="rounded-xl border p-4 transition hover:shadow-sm"
+                >
+                  <Link href={`/blog/${b.slug}`}>
+                    <div className="mb-1 line-clamp-2 text-base font-medium">
+                      {b.title}
+                    </div>
+                    {b.summary && (
+                      <p className="line-clamp-3 text-sm opacity-70">
+                        {b.summary}
+                      </p>
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </main>{" "}
+    </>
   );
 }

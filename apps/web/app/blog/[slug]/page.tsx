@@ -1,10 +1,11 @@
 // apps/web/app/blog/[slug]/page.tsx
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getServerSiteId } from "@/lib/site-server";
 import { fsGet, vNum, vStr } from "@/lib/firestore-rest";
 
 export const revalidate = 3600; // 1時間
-export const dynamic = "force-dynamic"; // ← ビルド時の実アクセスを避ける（ISRを使いたいなら削ってOK）
+export const dynamic = "force-dynamic";
 
 type Blog = {
   slug: string;
@@ -14,38 +15,204 @@ type Blog = {
   summary?: string;
   siteId: string;
   updatedAt: number;
+  relatedAsin?: string | null;
 };
 
-/** content から簡易サマリーを生成（記号除去して最大120文字） */
+type BestPrice = {
+  price: number;
+  url: string;
+  source: "amazon" | "rakuten";
+  updatedAt: number;
+};
+
+// ---- utils ----
+function timeago(ts?: number) {
+  if (!ts) return "—";
+  const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return `${s}秒前`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}分前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}時間前`;
+  const d = Math.floor(h / 24);
+  return `${d}日前`;
+}
+
 function makeSummaryFromContent(md: string, max = 120) {
   const plain = md
-    .replace(/^#{1,6}\s+/gm, "") // 見出しの # を除去
-    .replace(/\[(.*?)\]\((.*?)\)/g, "$1") // リンクはテキストに
-    .replace(/[*_`>~-]/g, " ") // 装飾系記号をざっくり除去
-    .replace(/\s+/g, " ") // 連続空白を1つに
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\[(.*?)\]\((.*?)\)/g, "$1")
+    .replace(/[*_`>~-]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
   return plain.length > max ? plain.slice(0, max) + "…" : plain;
 }
 
+// 依存なしの超軽量 Markdown -> HTML（見出し/段落/リンク/コード/箇条書きに対応）
+function mdToHtml(md: string) {
+  // 保護
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // コードフェンスを退避
+  const fences: string[] = [];
+  md = md.replace(/```([\s\S]*?)```/g, (_, code) => {
+    fences.push(
+      `<pre class="not-prose overflow-x-auto"><code>${esc(
+        code.trim()
+      )}</code></pre>`
+    );
+    return `[[[FENCE_${fences.length - 1}]]]`;
+  });
+
+  // 行ごとに処理
+  const lines = md.split(/\r?\n/);
+  const out: string[] = [];
+  let ulOpen = false;
+
+  const slugify = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^\w\u3000-\u9fff-]+/g, " ")
+      .trim()
+      .replace(/\s+/g, "-");
+
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+
+    // 見出し
+    const m = line.match(/^(#{1,6})\s+(.*)$/);
+    if (m) {
+      if (ulOpen) {
+        out.push("</ul>");
+        ulOpen = false;
+      }
+      const level = m[1].length;
+      const text = m[2].trim();
+      const id = slugify(text);
+      out.push(`<h${level} id="${id}">${text}</h${level}>`);
+      continue;
+    }
+
+    // 箇条書き
+    if (/^[-*]\s+/.test(line)) {
+      const item = line.replace(/^[-*]\s+/, "");
+      if (!ulOpen) {
+        out.push('<ul class="list-disc pl-6">');
+        ulOpen = true;
+      }
+      out.push(`<li>${item}</li>`);
+      continue;
+    } else if (ulOpen && line === "") {
+      out.push("</ul>");
+      ulOpen = false;
+    }
+
+    // 空行は段落区切り
+    if (line === "") {
+      out.push("");
+      continue;
+    }
+
+    // リンク、強調
+    let html = line
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/`([^`]+?)`/g, "<code>$1</code>")
+      .replace(
+        /\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g,
+        '<a href="$2" target="_blank" rel="noopener nofollow sponsored" class="underline">$1</a>'
+      );
+
+    out.push(`<p>${html}</p>`);
+  }
+  if (ulOpen) out.push("</ul>");
+
+  let html = out.join("\n");
+  // コードフェンス復帰
+  html = html.replace(
+    /\[\[\[FENCE_(\d+)]]]/g,
+    (_, i) => fences[Number(i)] || ""
+  );
+
+  return html;
+}
+
+// 目次抽出（##と###）
+function extractToc(md: string) {
+  const lines = md.split(/\r?\n/);
+  const items: { level: 2 | 3; text: string; id: string }[] = [];
+  const slugify = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^\w\u3000-\u9fff-]+/g, " ")
+      .trim()
+      .replace(/\s+/g, "-");
+  for (const l of lines) {
+    const m = l.match(/^(#{2,3})\s+(.*)$/);
+    if (m) {
+      const level = m[1].length === 2 ? 2 : 3;
+      const text = m[2].trim();
+      items.push({ level, text, id: slugify(text) });
+    }
+  }
+  return items;
+}
+
+// ---- data access ----
 async function fetchBlog(slug: string): Promise<Blog | null> {
   const doc = await fsGet({ path: `blogs/${slug}` });
   if (!doc) return null;
-
   const f = doc.fields;
   const content = vStr(f, "content") ?? "";
   const summary = vStr(f, "summary") || makeSummaryFromContent(content);
-
   return {
     slug,
     title: vStr(f, "title") ?? "(no title)",
     content,
-    imageUrl: vStr(f, "imageUrl"),
+    imageUrl: vStr(f, "imageUrl") ?? undefined,
     summary,
     siteId: vStr(f, "siteId") ?? "",
     updatedAt: vNum(f, "updatedAt") ?? 0,
+    relatedAsin: vStr(f, "relatedAsin") ?? null,
   };
 }
 
+async function fetchBestPrice(asin: string): Promise<BestPrice | null> {
+  const doc = await fsGet({ path: `products/${asin}` }).catch(() => null);
+  const f = (doc as any)?.fields;
+  if (!f) return null;
+  const price = vNum(f, "bestPrice.price");
+  const url = vStr(f, "bestPrice.url");
+  const source = vStr(f, "bestPrice.source") as
+    | "amazon"
+    | "rakuten"
+    | undefined;
+  const updatedAt = vNum(f, "bestPrice.updatedAt");
+  if (
+    typeof price === "number" &&
+    url &&
+    source &&
+    typeof updatedAt === "number"
+  ) {
+    return { price, url, source, updatedAt };
+  }
+  return null;
+}
+
+// ---- SEO ----
+export async function generateMetadata({
+  params,
+}: {
+  params: { slug: string };
+}) {
+  const blog = await fetchBlog(params.slug).catch(() => null);
+  if (!blog) return { title: "記事が見つかりません" };
+  const title = `${blog.title}｜値下げ情報・レビュー`;
+  const description = blog.summary ?? makeSummaryFromContent(blog.content);
+  return { title, description };
+}
+
+// ---- page ----
 export default async function BlogDetail({
   params,
 }: {
@@ -58,33 +225,113 @@ export default async function BlogDetail({
     blog = await fetchBlog(params.slug);
   } catch (e: any) {
     const msg = String(e?.message ?? "");
-    // 公開されていない記事などの 403 は 404 にフォールバック
-    if (msg.includes("fsGet failed: 403")) {
-      notFound();
-    }
+    if (msg.includes("fsGet failed: 403")) notFound();
     throw e;
   }
+  if (!blog || blog.siteId !== siteId) notFound();
 
-  if (!blog || blog.siteId !== siteId) {
-    notFound();
-  }
+  const toc = extractToc(blog.content);
+  const html = mdToHtml(blog.content);
+  const bestPrice = blog.relatedAsin
+    ? await fetchBestPrice(blog.relatedAsin)
+    : null;
+
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.chairscope.com"
+  ).replace(/\/$/, "");
+  const canonical = `${siteUrl}/blog/${blog.slug}`;
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
-      <h1 className="text-2xl font-bold">{blog.title}</h1>
-      <div className="mt-2 text-xs text-gray-500">
-        {blog.updatedAt ? new Date(blog.updatedAt).toLocaleString("ja-JP") : ""}
-      </div>
+      {/* breadcrumb */}
+      <nav className="text-sm text-gray-500">
+        <Link href="/" className="underline">
+          ホーム
+        </Link>
+        <span className="mx-2">/</span>
+        <Link href="/blog" className="underline">
+          ブログ
+        </Link>
+      </nav>
 
-      {/* サマリー（ある場合だけ表示） */}
-      {blog.summary && (
-        <p className="mt-4 text-sm text-gray-700">{blog.summary}</p>
+      <header className="mt-3">
+        <h1 className="text-2xl font-bold">{blog.title}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+          <span>更新: {blog.updatedAt ? timeago(blog.updatedAt) : "—"}</span>
+          <span className="rounded bg-gray-100 px-2 py-0.5">
+            本ページは広告を含みます
+          </span>
+        </div>
+        {blog.summary && (
+          <p className="mt-3 text-sm text-gray-700">{blog.summary}</p>
+        )}
+      </header>
+
+      {/* 関連商品CTA（あれば） */}
+      {bestPrice && (
+        <div className="mt-4 rounded-xl border bg-white p-4 text-sm">
+          <div className="mb-1">
+            関連商品の最安値:{" "}
+            <strong>
+              {new Intl.NumberFormat("ja-JP", {
+                style: "currency",
+                currency: "JPY",
+              }).format(bestPrice.price)}
+            </strong>
+            （{bestPrice.source === "amazon" ? "Amazon" : "楽天"} /{" "}
+            {timeago(bestPrice.updatedAt)}）
+          </div>
+          <a
+            href={bestPrice.url}
+            target="_blank"
+            rel="noopener noreferrer sponsored"
+            className="inline-block rounded-lg border px-4 py-2 font-medium hover:shadow-sm"
+          >
+            {bestPrice.source === "amazon" ? "Amazonで見る" : "楽天で見る"}
+          </a>
+        </div>
       )}
 
+      {/* 目次 */}
+      {toc.length > 0 && (
+        <aside className="mt-6 rounded-xl border bg-white p-4 text-sm">
+          <div className="mb-2 font-medium">目次</div>
+          <ul className="space-y-1">
+            {toc.map((t, i) => (
+              <li key={i} className={t.level === 3 ? "ml-4" : ""}>
+                <a href={`#${t.id}`} className="underline">
+                  {t.text}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )}
+
+      {/* 本文 */}
       <article className="prose prose-neutral mt-6 max-w-none">
-        {/* 本番では Markdown → HTML 変換に置き換え予定 */}
-        <pre className="whitespace-pre-wrap">{blog.content}</pre>
+        <div dangerouslySetInnerHTML={{ __html: html }} />
       </article>
+
+      {/* JSON-LD */}
+      <link rel="canonical" href={canonical} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "BlogPosting",
+            headline: blog.title,
+            description: blog.summary ?? makeSummaryFromContent(blog.content),
+            image: blog.imageUrl,
+            url: canonical,
+            dateModified: blog.updatedAt
+              ? new Date(blog.updatedAt).toISOString()
+              : undefined,
+            mainEntityOfPage: canonical,
+          }),
+        }}
+      />
     </main>
   );
 }
