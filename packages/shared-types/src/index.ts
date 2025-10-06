@@ -29,12 +29,13 @@ export interface BestPrice {
 }
 
 export interface Product {
+  // ---- 必須（既存） ----
   asin: string;
   title: string;
   brand?: string;
   imageUrl?: string;
   categoryId: string;
-  siteId: string; // 必須
+  siteId: string;
 
   tags?: string[];
   specs?: ProductSpecs;
@@ -45,6 +46,13 @@ export interface Product {
   views?: number;
   createdAt: number;
   updatedAt: number;
+
+  // 追加（実データ準拠の optional）
+  affiliateUrl?: string;
+  url?: string;
+  inStock?: boolean;
+  lastSeenAt?: number; // ms
+  source?: OfferSource; // "amazon" | "rakuten"
 }
 
 export type BlogStatus = "draft" | "published";

@@ -186,7 +186,7 @@ export default async function Page() {
       <main className="mx-auto max-w-6xl px-6 py-10">
         <header className="mb-4">
           <h1 className="text-2xl md:text-3xl font-bold">
-            オフィスチェアの比較・最安情報
+            ゲーミングチェアの比較・最安情報
           </h1>
           <p className="text-sm opacity-70">
             Amazonの価格と新着ブログを毎日自動更新

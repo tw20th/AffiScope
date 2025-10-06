@@ -4,17 +4,19 @@ type FsValue =
   | { integerValue: string }
   | { doubleValue: number }
   | { booleanValue: boolean }
-  | { nullValue: null };
+  | { nullValue: null }
+  | { mapValue: { fields?: Record<string, FsValue> } }
+  | { arrayValue: { values?: FsValue[] } };
 
 function toFsValue(v: string | number | boolean | null): FsValue {
   if (v === null) return { nullValue: null };
   if (typeof v === "string") return { stringValue: v };
-  if (Number.isInteger(v)) return { integerValue: String(v) }; // Firestore integer は文字列
+  if (Number.isInteger(v)) return { integerValue: String(v) };
   if (typeof v === "number") return { doubleValue: v };
   return { booleanValue: v };
 }
 
-// --- 便利: プロジェクト設定を env から取得
+// --- env 取得
 function getProject() {
   const projectId = process.env.NEXT_PUBLIC_FB_PROJECT_ID!;
   const apiKey = process.env.NEXT_PUBLIC_FB_API_KEY!;
@@ -26,25 +28,117 @@ function getProject() {
   return { projectId, apiKey };
 }
 
-/** runQuery（REST）: コレクションに対して where/order/limit で取得 */
+/** Firestore Value → JS Value（再帰デコード） */
+export function fsDecode(v?: FsValue): unknown {
+  if (!v) return undefined;
+  if ("stringValue" in v) return v.stringValue;
+  if ("integerValue" in v) return Number(v.integerValue);
+  if ("doubleValue" in v) return v.doubleValue;
+  if ("booleanValue" in v) return v.booleanValue;
+  if ("nullValue" in v) return null;
+  if ("arrayValue" in v) return (v.arrayValue.values ?? []).map(fsDecode);
+  if ("mapValue" in v) {
+    const out: Record<string, unknown> = {};
+    const fields = v.mapValue.fields ?? {};
+    for (const k of Object.keys(fields)) out[k] = fsDecode(fields[k]);
+    return out;
+  }
+  return undefined;
+}
+
+/** fields（map）＋ドット区切り path で値(FsValue)を取得 */
+function fsPick(
+  fields: Record<string, FsValue> | undefined,
+  path: string
+): FsValue | undefined {
+  if (!fields) return undefined;
+  const parts = path.split(".");
+  let cur: FsValue | undefined = { mapValue: { fields } };
+  for (const p of parts) {
+    if (!cur || !("mapValue" in cur) || !cur.mapValue.fields) return undefined;
+    cur = cur.mapValue.fields[p];
+  }
+  return cur;
+}
+
+/** 高レベル getter（path で直接 JS 値を取得） */
+export function fsGetAny(
+  fields: Record<string, FsValue> | undefined,
+  path: string
+): unknown {
+  const v = fsPick(fields, path);
+  return fsDecode(v);
+}
+
+export function fsGetString(
+  f: Record<string, FsValue> | undefined,
+  path: string
+) {
+  const v = fsGetAny(f, path);
+  return typeof v === "string" ? v : undefined;
+}
+export function fsGetNumber(
+  f: Record<string, FsValue> | undefined,
+  path: string
+) {
+  const v = fsGetAny(f, path);
+  return typeof v === "number" ? v : undefined;
+}
+export function fsGetBoolean(
+  f: Record<string, FsValue> | undefined,
+  path: string
+) {
+  const v = fsGetAny(f, path);
+  return typeof v === "boolean" ? v : undefined;
+}
+export function fsGetStringArray(
+  f: Record<string, FsValue> | undefined,
+  path: string
+) {
+  const v = fsGetAny(f, path);
+  return Array.isArray(v)
+    ? (v.filter((x) => typeof x === "string") as string[])
+    : undefined;
+}
+export function fsGetObject<T = any>(
+  f: Record<string, FsValue> | undefined,
+  path: string
+) {
+  const v = fsGetAny(f, path);
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as T) : undefined;
+}
+
+/** 互換エイリアス（既存 import を維持） */
+export const vStr = fsGetString;
+export const vNum = fsGetNumber;
+
+export function docIdFromName(name: string): string {
+  const i = name.lastIndexOf("/");
+  return i >= 0 ? name.slice(i + 1) : name;
+}
+
+/** runQuery（REST） */
 export async function fsRunQuery(params: {
   projectId?: string;
   apiKey?: string;
-  collection: string; // 例: "blogs"
+  collection: string;
   where?: Array<{
     field: string;
-    op?: "EQUAL" | "GREATER_THAN" | "LESS_THAN";
+    op?:
+      | "EQUAL"
+      | "GREATER_THAN"
+      | "LESS_THAN"
+      | "GREATER_THAN_OR_EQUAL"
+      | "LESS_THAN_OR_EQUAL";
     value: string | number | boolean | null;
   }>;
   orderBy?: { field: string; direction?: "ASCENDING" | "DESCENDING" }[];
   limit?: number;
 }) {
   const { collection, where = [], orderBy = [], limit } = params;
-  const { projectId, apiKey } = {
-    ...getProject(),
-    projectId: params.projectId ?? getProject().projectId,
-    apiKey: params.apiKey ?? getProject().apiKey,
-  };
+  const base = getProject();
+  const projectId = params.projectId ?? base.projectId;
+  const apiKey = params.apiKey ?? base.apiKey;
 
   const parent = `projects/${projectId}/databases/(default)/documents`;
   const url = `https://firestore.googleapis.com/v1/${parent}:runQuery?key=${encodeURIComponent(
@@ -88,7 +182,6 @@ export async function fsRunQuery(params: {
     let detail = "";
     try {
       const txt = await res.text();
-      // FirestoreはJSON/テキストいずれもあり得る。まずJSONを試す。
       try {
         const j = JSON.parse(txt);
         detail = j?.error?.message ? ` — ${j.error.message}` : ` — ${txt}`;
@@ -105,30 +198,26 @@ export async function fsRunQuery(params: {
     .filter(Boolean)
     .map((doc) => ({
       name: doc.name as string,
-      fields: doc.fields as Record<string, any>,
+      fields: doc.fields as Record<string, FsValue>,
     }));
 }
 
-/** 単一ドキュメント取得（REST）: `collection/docId` を GET */
+/** 単一ドキュメント取得（REST） */
 export async function fsGet(params: {
   projectId?: string;
   apiKey?: string;
-  path: string; // 例: "blogs/price-vs-value"
+  path: string;
 }) {
-  const { projectId, apiKey } = {
-    ...getProject(),
-    projectId: params.projectId ?? getProject().projectId,
-    apiKey: params.apiKey ?? getProject().apiKey,
-  };
-  const parent = `projects/${projectId}/databases/(default)/documents`;
+  const base = getProject();
+  const projectId = params.projectId ?? base.projectId;
+  const apiKey = params.apiKey ?? base.apiKey;
 
-  // スラッシュは残す（パスとして有効）ため encodeURI を使用
+  const parent = `projects/${projectId}/databases/(default)/documents`;
   const url = `https://firestore.googleapis.com/v1/${parent}/${encodeURI(
     params.path
   )}?key=${encodeURIComponent(apiKey)}`;
 
   const res = await fetch(url, { cache: "no-store" });
-
   if (res.status === 404) return null;
   if (!res.ok) {
     let detail = "";
@@ -147,28 +236,6 @@ export async function fsGet(params: {
   const doc = (await res.json()) as any;
   return {
     name: doc.name as string,
-    fields: doc.fields as Record<string, any>,
+    fields: doc.fields as Record<string, FsValue>,
   };
-}
-
-// --- Firestore REST 値 → JS 値（名前を vStr/vNum に合わせてエクスポート）
-export function fsGetString(f: any, key: string) {
-  return f?.[key]?.stringValue as string | undefined;
-}
-export function fsGetNumber(f: any, key: string) {
-  const v = f?.[key];
-  if (!v) return undefined;
-  if (typeof v.integerValue === "string") return Number(v.integerValue);
-  if (typeof v.doubleValue === "number") return v.doubleValue;
-  return undefined;
-}
-
-// 互換エイリアス（既存コードの import をそのまま使えるように）
-export const vStr = fsGetString;
-export const vNum = fsGetNumber;
-
-// name => docId 抽出（REST は "projects/.../documents/collection/doc" 形式）
-export function docIdFromName(name: string): string {
-  const i = name.lastIndexOf("/");
-  return i >= 0 ? name.slice(i + 1) : name;
 }

@@ -14,7 +14,8 @@ type Blog = {
   imageUrl?: string;
   summary?: string;
   siteId: string;
-  updatedAt: number;
+  updatedAt?: number;
+  publishedAt?: number;
   relatedAsin?: string | null;
 };
 
@@ -26,17 +27,16 @@ type BestPrice = {
 };
 
 // ---- utils ----
-function timeago(ts?: number) {
-  if (!ts) return "—";
-  const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
-  if (s < 60) return `${s}秒前`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}分前`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}時間前`;
-  const d = Math.floor(h / 24);
-  return `${d}日前`;
-}
+const fmt = (ts?: number) =>
+  ts
+    ? new Date(ts).toLocaleString("ja-JP", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
 
 function makeSummaryFromContent(md: string, max = 120) {
   const plain = md
@@ -48,12 +48,10 @@ function makeSummaryFromContent(md: string, max = 120) {
   return plain.length > max ? plain.slice(0, max) + "…" : plain;
 }
 
-// 依存なしの超軽量 Markdown -> HTML（見出し/段落/リンク/コード/箇条書きに対応）
+// 依存なしの軽量 Markdown -> HTML（必要最小限）
 function mdToHtml(md: string) {
-  // 保護
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  // コードフェンスを退避
   const fences: string[] = [];
   md = md.replace(/```([\s\S]*?)```/g, (_, code) => {
     fences.push(
@@ -64,7 +62,6 @@ function mdToHtml(md: string) {
     return `[[[FENCE_${fences.length - 1}]]]`;
   });
 
-  // 行ごとに処理
   const lines = md.split(/\r?\n/);
   const out: string[] = [];
   let ulOpen = false;
@@ -79,7 +76,6 @@ function mdToHtml(md: string) {
   for (const raw of lines) {
     const line = raw.trimEnd();
 
-    // 見出し
     const m = line.match(/^(#{1,6})\s+(.*)$/);
     if (m) {
       if (ulOpen) {
@@ -93,7 +89,6 @@ function mdToHtml(md: string) {
       continue;
     }
 
-    // 箇条書き
     if (/^[-*]\s+/.test(line)) {
       const item = line.replace(/^[-*]\s+/, "");
       if (!ulOpen) {
@@ -107,13 +102,11 @@ function mdToHtml(md: string) {
       ulOpen = false;
     }
 
-    // 空行は段落区切り
     if (line === "") {
       out.push("");
       continue;
     }
 
-    // リンク、強調
     let html = line
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>")
@@ -128,16 +121,14 @@ function mdToHtml(md: string) {
   if (ulOpen) out.push("</ul>");
 
   let html = out.join("\n");
-  // コードフェンス復帰
   html = html.replace(
     /\[\[\[FENCE_(\d+)]]]/g,
     (_, i) => fences[Number(i)] || ""
   );
-
   return html;
 }
 
-// 目次抽出（##と###）
+// 目次抽出（## と ###）
 function extractToc(md: string) {
   const lines = md.split(/\r?\n/);
   const items: { level: 2 | 3; text: string; id: string }[] = [];
@@ -172,7 +163,8 @@ async function fetchBlog(slug: string): Promise<Blog | null> {
     imageUrl: vStr(f, "imageUrl") ?? undefined,
     summary,
     siteId: vStr(f, "siteId") ?? "",
-    updatedAt: vNum(f, "updatedAt") ?? 0,
+    updatedAt: vNum(f, "updatedAt") ?? undefined,
+    publishedAt: vNum(f, "publishedAt") ?? undefined,
     relatedAsin: vStr(f, "relatedAsin") ?? null,
   };
 }
@@ -257,7 +249,12 @@ export default async function BlogDetail({
       <header className="mt-3">
         <h1 className="text-2xl font-bold">{blog.title}</h1>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
-          <span>更新: {blog.updatedAt ? timeago(blog.updatedAt) : "—"}</span>
+          <span>公開: {fmt(blog.publishedAt ?? blog.updatedAt)}</span>
+          {blog.updatedAt &&
+          blog.publishedAt &&
+          blog.updatedAt > blog.publishedAt ? (
+            <span>（更新: {fmt(blog.updatedAt)}）</span>
+          ) : null}
           <span className="rounded bg-gray-100 px-2 py-0.5">
             本ページは広告を含みます
           </span>
@@ -279,7 +276,7 @@ export default async function BlogDetail({
               }).format(bestPrice.price)}
             </strong>
             （{bestPrice.source === "amazon" ? "Amazon" : "楽天"} /{" "}
-            {timeago(bestPrice.updatedAt)}）
+            {fmt(bestPrice.updatedAt)}）
           </div>
           <a
             href={bestPrice.url}
@@ -325,6 +322,9 @@ export default async function BlogDetail({
             description: blog.summary ?? makeSummaryFromContent(blog.content),
             image: blog.imageUrl,
             url: canonical,
+            datePublished: blog.publishedAt
+              ? new Date(blog.publishedAt).toISOString()
+              : undefined,
             dateModified: blog.updatedAt
               ? new Date(blog.updatedAt).toISOString()
               : undefined,

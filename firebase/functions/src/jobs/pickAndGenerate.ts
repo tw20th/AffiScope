@@ -1,74 +1,121 @@
-// firebase/functions/src/jobs/pickAndGenerate.ts
-import * as functions from "firebase-functions";
+// --- 追加/修正: 強ログ & フォールバック & 件数表示 ---
 import { getFirestore } from "firebase-admin/firestore";
+import { getSiteConfig } from "../lib/sites.js";
+import { resolvePain } from "../lib/painResolver.js";
+import { generateBlogContent } from "../utils/generateBlogContent.js";
+import * as functions from "firebase-functions";
 
 const REGION = "asia-northeast1";
+const db = getFirestore();
 
+/** 手動/スケジュール両対応の実行本体 */
+export async function runPickAndGenerateOnce(opts?: {
+  siteId?: string;
+  limit?: number;
+}) {
+  const limit = opts?.limit ?? 3;
+
+  // 候補を 24h → 7d → 全体desc の順でフォールバック
+  const now = Date.now();
+  const windows = [24, 24 * 7];
+  let snap: FirebaseFirestore.QuerySnapshot | null = null;
+
+  const base = db.collection("products");
+  const withSite = (q: FirebaseFirestore.Query) =>
+    opts?.siteId ? q.where("siteId", "==", opts.siteId) : q;
+
+  for (const h of windows) {
+    const q = withSite(
+      base.where("updatedAt", ">=", now - h * 60 * 60 * 1000)
+    ).limit(limit);
+    const s = await q.get();
+    if (!s.empty) {
+      snap = s;
+      break;
+    }
+  }
+  if (!snap) {
+    const q = withSite(base.orderBy("updatedAt", "desc")).limit(limit);
+    snap = await q.get();
+  }
+
+  console.log(
+    `[pickAndGenerate] candidates=${snap.size} siteId=${
+      opts?.siteId ?? "-"
+    } limit=${limit}`
+  );
+
+  if (snap.empty) {
+    console.warn("[pickAndGenerate] no product candidates found.");
+    return { generated: 0, failed: 0 };
+  }
+
+  let success = 0,
+    fail = 0;
+  for (const d of snap.docs) {
+    const p = d.data() as any;
+    const asin = p.asin;
+    const siteId = p.siteId;
+    const slug = `price-drop-${siteId}_${asin}`;
+
+    try {
+      const site = getSiteConfig(siteId);
+      const { pain, persona } = resolvePain(site, { tags: p.tags });
+
+      console.log(
+        `[pickAndGenerate] start asin=${asin} siteId=${siteId} pain="${pain}" persona="${persona}"`
+      );
+
+      const { title, excerpt, content, tags, imageUrl } =
+        await generateBlogContent({
+          product: {
+            name: p.productName ?? p.name ?? "(no name)",
+            asin,
+            tags: p.tags,
+          },
+          siteId,
+          siteName: site?.displayName ?? siteId,
+          persona,
+          pain,
+        });
+
+      await db.collection("blogs").doc(slug).set(
+        {
+          slug,
+          siteId: p.siteId, // ← これ。ハードコード禁止
+          status: "draft", // すぐ出したいなら "published"
+          title,
+          summary: excerpt,
+          content,
+          tags,
+          imageUrl,
+          relatedAsin: p.asin,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          views: 0,
+        },
+        { merge: true }
+      );
+
+      console.log(`[pickAndGenerate] wrote blogs/${slug} (status=draft)`);
+      success++;
+    } catch (e: any) {
+      console.error(
+        `[pickAndGenerate] ✖ failed asin=${asin} slug=${slug}:`,
+        e?.message ?? e
+      );
+      fail++;
+    }
+  }
+
+  console.log(`[pickAndGenerate] done success=${success} fail=${fail}`);
+  return { generated: success, failed: fail };
+}
+
+// 既存のスケジュール関数は共通本体を呼ぶだけ
 export const pickAndGenerateDaily = functions
   .region(REGION)
-  .pubsub.schedule("0 12 * * *") // JST 21時ごろにしたいなら timeZone を Asia/Tokyo に
+  .runWith({ secrets: ["OPENAI_API_KEY"] })
+  .pubsub.schedule("0 12 * * *")
   .timeZone("Asia/Tokyo")
-  .onRun(async () => {
-    const db = getFirestore();
-
-    // 1) 候補選定（例: 昨日以降で priceHistory に変化があったもの）
-    const since = Date.now() - 24 * 60 * 60 * 1000;
-    const snap = await db
-      .collection("products")
-      .where("updatedAt", ">=", since)
-      .limit(3)
-      .get();
-
-    const tasks = snap.docs.map(async (doc) => {
-      const p = doc.data() as any;
-
-      // slug は重複回避のため製品IDを含める簡易版
-      const slug = `price-drop-${doc.id}`;
-      const exists = await db.collection("blogs").doc(slug).get();
-      if (exists.exists) return;
-
-      const priceText =
-        typeof p?.bestPrice?.price === "number"
-          ? `¥${p.bestPrice.price.toLocaleString()}`
-          : "-";
-
-      const md = [
-        `# ${p.title} が値下げ！`,
-        "",
-        `最安値: **${priceText}**`,
-        "",
-        "## ポイント",
-        "- ここに特徴を3点（自動抽出予定）",
-        "",
-        "## どこで買う？",
-        `- [Amazonで見る](${p?.bestPrice?.url ?? "#"})`,
-        "",
-        "## まとめ",
-        "用途別のおすすめも今後自動挿入",
-      ].join("\n");
-
-      const now = Date.now();
-
-      await db
-        .collection("blogs")
-        .doc(slug)
-        .set({
-          slug,
-          siteId: p.siteId,
-          title: `${p.title} 値下げ情報`,
-          relatedAsin: p.asin,
-          content: md,
-          tags: ["値下げ", p.categoryId].filter(Boolean),
-          // ← 最初から公開
-          status: "published",
-          views: 0,
-          createdAt: now,
-          updatedAt: now,
-          publishedAt: now,
-          lastPublishedAt: now,
-        });
-      // 作成直後に published なので onPublishBlog が走り、ISR/sitemap/IndexNow も自動実行されます
-    });
-
-    await Promise.all(tasks);
-  });
+  .onRun(() => runPickAndGenerateOnce());

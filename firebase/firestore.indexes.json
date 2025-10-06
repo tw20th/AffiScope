@@ -36,7 +36,6 @@
         { "fieldPath": "bestPrice.price", "order": "ASCENDING" }
       ]
     },
-
     {
       "collectionGroup": "products",
       "queryScope": "COLLECTION",
@@ -46,7 +45,23 @@
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
-
+    {
+      "collectionGroup": "products",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "siteId", "order": "ASCENDING" },
+        { "fieldPath": "lastSeenAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "products",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "siteId", "order": "ASCENDING" },
+        { "fieldPath": "inStock", "order": "ASCENDING" },
+        { "fieldPath": "lastSeenAt", "order": "ASCENDING" }
+      ]
+    },
     {
       "collectionGroup": "categories",
       "queryScope": "COLLECTION",
@@ -56,7 +71,6 @@
         { "fieldPath": "order", "order": "ASCENDING" }
       ]
     },
-
     {
       "collectionGroup": "categories",
       "queryScope": "COLLECTION",
@@ -76,6 +90,24 @@
         { "fieldPath": "updatedAt", "order": "DESCENDING" }
       ]
     },
+    {
+      "collectionGroup": "blogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "siteId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "publishedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "blogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "ASCENDING" }
+      ]
+    },
+
     {
       "collectionGroup": "asinQueue",
       "queryScope": "COLLECTION",

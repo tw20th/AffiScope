@@ -2,11 +2,7 @@
 import * as functions from "firebase-functions";
 import { defineSecret } from "firebase-functions/params";
 import { getApps, initializeApp } from "firebase-admin/app";
-import {
-  getFirestore,
-  FieldValue,
-  QueryDocumentSnapshot,
-} from "firebase-admin/firestore";
+import { getFirestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { fetchAmazonOffers } from "../fetchers/amazon/paapi.js";
 
 const REGION = "asia-northeast1";

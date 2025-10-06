@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { summaryFromContent } from "@/utils/text";
 
 export type BlogCardProps = {
@@ -10,6 +9,8 @@ export type BlogCardProps = {
   summary?: string | null;
   content?: string | null; // フォールバック用（任意）
   imageUrl?: string | null;
+  /** 追加: 公開日時（なければ updatedAt を出す） */
+  publishedAt?: number | null;
   updatedAt?: number | null;
 };
 
@@ -19,6 +20,7 @@ export default function BlogCard({
   summary,
   content,
   imageUrl,
+  publishedAt,
   updatedAt,
 }: BlogCardProps) {
   const fallback =
@@ -26,11 +28,22 @@ export default function BlogCard({
       ? summaryFromContent(content ?? "")
       : summary;
 
+  const pub = publishedAt ?? updatedAt ?? null;
+  const upd = updatedAt ?? null;
+
+  const fmt = (ts: number) =>
+    new Date(ts).toLocaleString("ja-JP", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
   return (
     <li className="flex gap-4 rounded-2xl border p-4">
       {imageUrl ? (
         <div className="relative h-20 w-28 shrink-0 overflow-hidden rounded-xl bg-gray-50">
-          {/* 画像は任意。外部ドメイン許可は next.config に合わせてね */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={imageUrl} alt="" className="h-full w-full object-cover" />
         </div>
@@ -40,11 +53,14 @@ export default function BlogCard({
         <h2 className="text-lg font-semibold">
           <Link href={`/blog/${slug}`}>{title}</Link>
         </h2>
+
         {fallback ? (
-          <p className="mt-1 text-sm text-gray-600 line-clamp-2">{fallback}</p>
+          <p className="mt-1 line-clamp-2 text-sm text-gray-600">{fallback}</p>
         ) : null}
+
         <div className="mt-1 text-xs text-gray-500">
-          {updatedAt ? new Date(updatedAt).toLocaleString("ja-JP") : ""}
+          {pub ? <>公開: {fmt(pub)}</> : null}
+          {upd && pub && upd > pub ? <>（更新: {fmt(upd)}）</> : null}
         </div>
       </div>
     </li>

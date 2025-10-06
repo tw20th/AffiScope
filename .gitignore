@@ -36,7 +36,10 @@ serviceAccount*.json
 
 # --- Next.js ---
 .next/
-out/
+# out/ は通常のエクスポートディレクトリだけ無視する
+# apps/web/out は無視するが、apps/web/app/out は許可する
+/out/
+!.apps/web/app/out/
 .vercel/
 
 # --- Firebase ---

@@ -1,7 +1,6 @@
+// firebase/functions/src/http/trackClick.ts
 import * as functions from "firebase-functions";
-// ❌ import * as admin from 'firebase-admin';
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import * as admin from "firebase-admin"; // initialize 用だけ残す（既に index.ts で初期化済みならなくてもOK）
 
 export const trackClick = functions
   .region("asia-northeast1")
@@ -22,16 +21,12 @@ export const trackClick = functions
     try {
       const body =
         typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-      const { asin, source } = body as {
-        asin: string;
-        source: "amazon" | "rakuten";
-      };
-      if (!asin || !source) {
+      const { asin } = body as { asin: string; source?: "amazon" | "rakuten" };
+      if (!asin) {
         res.status(400).send("bad request");
         return;
       }
 
-      // ✅ Admin Firestore のモジュラー API
       const db = getFirestore();
       await db
         .collection("products")

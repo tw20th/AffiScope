@@ -1,10 +1,19 @@
-import type { Product } from "@affiscope/shared-types";
+import type { Product, OfferSource } from "@affiscope/shared-types";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { fsRunQuery, vNum, vStr, docIdFromName } from "@/lib/firestore-rest";
+
+import {
+  fsGet,
+  fsRunQuery, // ← 追加
+  docIdFromName, // ← 追加
+  fsGetString as vStr,
+  fsGetNumber as vNum,
+  fsGetStringArray as vStrArr, // ← 追加（tags 用/必要なら）
+  fsGetBoolean as vBool, // ← 追加（inStock 用/必要なら）
+} from "@/lib/firestore-rest";
 import { getServerSiteId } from "@/lib/site-server";
-import ProductCard from "@/components/products/ProductCard";
 import Image from "next/image";
+import ProductCard from "@/components/products/ProductCard";
 
 export const revalidate = 60;
 export const dynamic = "force-dynamic";
@@ -35,60 +44,52 @@ async function fetchProductByAsin(
   asin: string,
   siteId: string
 ): Promise<Product | null> {
-  const projectId = process.env.NEXT_PUBLIC_FB_PROJECT_ID;
-  const apiKey = process.env.NEXT_PUBLIC_FB_API_KEY;
-  if (!projectId || !apiKey) return null;
+  const doc = await fsGet({ path: `products/${encodeURIComponent(asin)}` });
+  if (!doc) return null;
 
-  const url = new URL(
-    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/products/${encodeURIComponent(
-      asin
-    )}`
-  );
-  url.searchParams.set("key", String(apiKey));
+  const f = doc.fields;
 
-  const res = await fetch(url.toString(), { cache: "no-store" });
-  if (!res.ok) return null;
+  const bpPrice = vNum(f, "bestPrice.price");
+  const bpUrl = vStr(f, "bestPrice.url");
+  const bpSource = vStr(f, "bestPrice.source") as
+    | "amazon"
+    | "rakuten"
+    | undefined;
+  const bpUpdatedAt = vNum(f, "bestPrice.updatedAt");
 
-  const d: any = await res.json();
-  const f = d.fields ?? {};
-  const valStr = (k: string) => f?.[k]?.stringValue as string | undefined;
-  const valNum = (k: string) =>
-    (typeof f?.[k]?.integerValue === "string"
-      ? Number(f?.[k]?.integerValue)
-      : f?.[k]?.doubleValue ?? f?.[k]?.numberValue) as number | undefined;
-
-  const bestPrice = (() => {
-    const price = valNum("bestPrice.price");
-    const url = valStr("bestPrice.url");
-    const source = valStr("bestPrice.source") as
-      | "amazon"
-      | "rakuten"
-      | undefined;
-    const updatedAt = valNum("bestPrice.updatedAt");
-    return typeof price === "number" &&
-      url &&
-      source &&
-      typeof updatedAt === "number"
-      ? { price, url, source, updatedAt }
+  const bestPrice =
+    typeof bpPrice === "number" &&
+    typeof bpUpdatedAt === "number" &&
+    bpUrl &&
+    bpSource
+      ? { price: bpPrice, url: bpUrl, source: bpSource, updatedAt: bpUpdatedAt }
       : undefined;
-  })();
 
   return {
     asin,
-    title: valStr("title") ?? "",
-    brand: valStr("brand") ?? undefined,
-    imageUrl: valStr("imageUrl") ?? undefined,
-    categoryId: valStr("categoryId") ?? "",
+    title: vStr(f, "title") ?? "",
+    brand: vStr(f, "brand") ?? undefined,
+    imageUrl: vStr(f, "imageUrl") ?? undefined,
+    categoryId: vStr(f, "categoryId") ?? "",
     siteId,
-    tags: [], // 必要なら配列展開を後で追加
-    specs: undefined, // 同上
+
+    // 追加分（型あり）
+    affiliateUrl: vStr(f, "affiliateUrl") ?? undefined,
+    url: vStr(f, "url") ?? undefined,
+    inStock: vBool(f, "inStock"),
+    lastSeenAt: vNum(f, "lastSeenAt"),
+    source:
+      (vStr(f, "source") as "amazon" | "rakuten" | undefined) ?? undefined,
+
+    tags: vStrArr(f, "tags") ?? [],
+    specs: undefined, // 必要なら fsGetObject(f, "specs")
     offers: [],
     bestPrice,
     priceHistory: [],
-    aiSummary: valStr("aiSummary") ?? undefined,
-    views: valNum("views") ?? 0,
-    createdAt: valNum("createdAt") ?? 0,
-    updatedAt: valNum("updatedAt") ?? 0,
+    aiSummary: vStr(f, "aiSummary") ?? undefined,
+    views: vNum(f, "views") ?? 0,
+    createdAt: vNum(f, "createdAt") ?? 0,
+    updatedAt: vNum(f, "updatedAt") ?? 0,
   };
 }
 

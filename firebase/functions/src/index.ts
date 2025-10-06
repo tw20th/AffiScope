@@ -17,6 +17,7 @@ import { getFirestore } from "firebase-admin/firestore";
 if (getApps().length === 0) initializeApp();
 getFirestore().settings({ ignoreUndefinedProperties: true });
 
+// ⚠️ 戻り値を返さない（void）形にする
 export const health = functions
   .region("asia-northeast1")
   .https.onRequest((_req, res) => {
@@ -32,3 +33,14 @@ export {
   scheduledDiscoverFromSearch,
   runDiscoverNow,
 } from "./jobs/discoverProducts.js";
+
+export {
+  scheduledProcessAsinQueue,
+  runProcessAsinQueue,
+} from "./jobs/processAsinQueue.js";
+
+export { scheduledBlogMorning } from "./jobs/scheduledBlogMorning.js";
+export { scheduledBlogNoon } from "./jobs/scheduledBlogNoon.js";
+export { scheduledRewriteLowScoreBlogs } from "./jobs/scheduledRewriteLowScoreBlogs.js";
+
+export { runBackfillBlogSiteId } from "./scripts/backfillBlogSiteId.js";

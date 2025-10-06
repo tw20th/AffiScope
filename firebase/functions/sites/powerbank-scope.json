@@ -1,0 +1,92 @@
+{
+  "siteId": "powerbank-scope",
+  "displayName": "ChargeScope",
+  "domain": "www.rakuten-bloggen1.com",
+  "brand": {
+    "primary": "#0EA5E9",
+    "accent": "#22C55E",
+    "logoUrl": "/logos/chargescope.svg",
+    "theme": "light"
+  },
+  "categoryPreset": ["power-bank"],
+  "defaultPersona": "外出が多い人",
+  "painRules": [
+    {
+      "id": "battery_anxiety",
+      "label": "外出先で電池切れが不安",
+      "match": { "anyTags": ["急速充電", "大容量", "PD", "Type-C"] },
+      "personas": ["学生", "ビジネスパーソン"]
+    },
+    {
+      "id": "carry_weight",
+      "label": "とにかく軽くしたい",
+      "match": { "anyTags": ["軽量", "薄型"] },
+      "personas": ["旅行者", "学生"]
+    },
+    {
+      "id": "multi_device",
+      "label": "複数端末を同時充電したい",
+      "match": { "anyTags": ["2台同時", "3台同時", "複数ポート"] },
+      "personas": ["ビジネスパーソン", "ガジェット好き"]
+    }
+  ],
+  "productRules": {
+    "categoryId": "power-bank",
+    "includeKeywords": [
+      "モバイルバッテリー",
+      "Power Bank",
+      "急速充電",
+      "PD",
+      "Type-C",
+      "USB-C"
+    ],
+    "excludeKeywords": [
+      "ケーブル単品",
+      "ケース",
+      "充電スタンド",
+      "電池単体",
+      "ソーラーパネル単体"
+    ]
+  },
+  "affiliate": { "amazon": { "partnerTag": "tw20th0c-22" } },
+  "features": { "blogs": true, "ranking": true },
+  "seeds": { "asins": [] },
+  "discovery": {
+    "searchKeywords": [
+      "モバイルバッテリー",
+      "急速充電 PD",
+      "Type-C 10000mAh",
+      "軽量 10000mAh",
+      "20000mAh PD"
+    ],
+    "searchIndex": "Electronics",
+    "maxPerRun": 25,
+    "maxSearchItemPage": 8,
+    "randomizePage": true,
+    "relaxedOnFirstImport": false,
+    "cooldownDays": 10,
+    "minPrice": 1000,
+    "maxPrice": 20000
+  },
+  "tagRules": [
+    {
+      "tag": "急速充電",
+      "any": [
+        { "type": "titleMatches", "pattern": "PD|Power Delivery|急速" },
+        { "type": "featureMatches", "pattern": "PD|30W|45W|65W|100W" }
+      ]
+    },
+    {
+      "tag": "大容量",
+      "any": [
+        { "type": "titleMatches", "pattern": "20000mAh|30000mAh|50000mAh" }
+      ]
+    },
+    {
+      "tag": "軽量",
+      "any": [{ "type": "titleMatches", "pattern": "軽量|薄型|コンパクト" }]
+    }
+  ],
+  "createdAt": 0,
+  "updatedAt": 0
+}

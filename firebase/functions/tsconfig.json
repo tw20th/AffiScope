@@ -11,6 +11,6 @@
     "resolveJsonModule": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/scripts/normalizeProducts.mjs"],
   "exclude": ["node_modules", "dist"]
 }

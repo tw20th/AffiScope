@@ -245,6 +245,13 @@ export async function discoverForSite(
       ImageUrl: data.imageUrl ?? undefined,
       Price: data.price,
       DetailPageURL: data.url,
+      // 追加（paapi.ts 側で拾った値を result に含めている前提）
+      Features: (data as any).features, // string[]（任意）
+      Dimensions: (data as any).dimensions, // 任意
+      Material: (data as any).material, // 任意
+      WarrantyText: (data as any).warranty, // 任意
+      MerchantName: (data as any).merchant, // 任意
+      OfferCount: (data as any).offerCount, // 任意
     };
 
     const prod = mapAmazonItemToProduct(ai, {

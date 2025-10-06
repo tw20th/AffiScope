@@ -8,12 +8,31 @@
     "logoUrl": "/logos/chairscope.svg",
     "theme": "dark"
   },
-
   "categoryPreset": ["gaming-chair"],
-
+  "defaultPersona": "在宅ワーカー",
+  "painRules": [
+    {
+      "id": "back_pain_long_sitting",
+      "label": "腰痛で長時間座れない",
+      "match": { "anyTags": ["腰痛対策", "ランバー", "姿勢"] },
+      "personas": ["在宅ワーカー", "ゲーマー"]
+    },
+    {
+      "id": "sweaty",
+      "label": "蒸れて不快（夏でも快適に座りたい）",
+      "match": { "anyTags": ["蒸れ対策", "メッシュ"] },
+      "personas": ["在宅ワーカー", "学生"]
+    },
+    {
+      "id": "best_value",
+      "label": "コスパよく失敗したくない",
+      "match": { "anyTags": ["コスパ重視"] },
+      "personas": ["在宅ワーカー", "ゲーマー", "学生"]
+    }
+  ],
   "productRules": {
     "categoryId": "gaming-chair",
-    "includeKeywords": [],
+    "includeKeywords": ["チェア", "椅子", "chair"],
     "excludeKeywords": [
       "替えカバー",
       "キャスター",
@@ -23,41 +42,76 @@
       "デスク",
       "フットレスト単品",
       "ヘッドレスト単品",
-      "肘置き単品"
+      "肘置き単品",
+      "GPU",
+      "グラボ",
+      "グラフィック",
+      "グラフィックス",
+      "RTX",
+      "GeForce",
+      "PCIe",
+      "GDDR",
+      "DisplayPort",
+      "HDMI 2"
     ]
   },
-
   "affiliate": { "amazon": { "partnerTag": "tw20th0c-22" } },
-
   "features": { "blogs": true, "ranking": true },
-
-  "seeds": {
-    "asins": ["B086JTCGZR", "B08L8LG4M3", "B07Y8Y2V8D", "B08D6Z7S94"]
-  },
-
+  "seeds": { "asins": ["B086JTCGZR", "B07Y8Y2V8D", "B08D6Z7S94"] },
   "discovery": {
     "searchKeywords": [
       "ゲーミングチェア",
       "ゲーミング チェア",
       "gaming chair",
-      "オフィスチェア",
-      "メッシュチェア",
-      "ハイバック チェア",
-      "リクライニング チェア",
-      "オットマン 付き",
-      "腰痛 チェア",
-      "ランバーサポート"
+      "オットマン 付き ゲーミング",
+      "リクライニング ゲーミング",
+      "ランバーサポート ゲーミング"
     ],
     "searchIndex": "OfficeProducts",
     "maxPerRun": 25,
     "maxSearchItemPage": 8,
     "randomizePage": true,
-    "relaxedOnFirstImport": true,
+    "relaxedOnFirstImport": false,
     "cooldownDays": 10,
     "minPrice": 5000,
     "maxPrice": 120000
   },
-
+  "tagRules": [
+    {
+      "tag": "腰痛対策",
+      "any": [
+        { "type": "featureMatches", "pattern": "ランバー|腰(サポート)?" },
+        { "type": "featureMatches", "pattern": "リクライニング|180度|135度" },
+        { "type": "titleMatches", "pattern": "腰" }
+      ]
+    },
+    {
+      "tag": "蒸れ対策",
+      "any": [
+        { "type": "materialMatches", "pattern": "メッシュ|ファブリック" },
+        { "type": "featureMatches", "pattern": "通気性|メッシュ" }
+      ]
+    },
+    {
+      "tag": "コスパ重視",
+      "any": [
+        { "type": "bestPriceLte", "value": 15000 },
+        {
+          "type": "all",
+          "all": [
+            { "type": "bestPriceLte", "value": 25000 },
+            {
+              "type": "or",
+              "any": [
+                { "type": "tagWillBe", "tag": "腰痛対策" },
+                { "type": "tagWillBe", "tag": "蒸れ対策" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
   "createdAt": 0,
   "updatedAt": 0
 }

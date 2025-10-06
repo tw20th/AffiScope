@@ -1,12 +1,17 @@
-// firebase/functions/src/scripts/updateByAsins.ts
 try {
   if (process.env.FUNCTIONS_EMULATOR || !process.env.K_SERVICE) {
     await import("dotenv/config");
   }
 } catch {}
 
+import { getApps, initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+
 import { fetchAmazonOffers } from "../fetchers/amazon/paapi.js";
 import { upsertOffers } from "../upsert/upsertOffers.js";
+
+if (getApps().length === 0) initializeApp();
+const db = getFirestore();
 
 function isNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
@@ -22,21 +27,91 @@ async function main() {
   }
 
   const result = await fetchAmazonOffers(asins);
+
   for (const asin of asins) {
     const hit = result[asin];
+    console.log("[debug]", asin, {
+      hasFeatures: !!hit?.features?.length,
+      hasDims: !!hit?.dimensions,
+      material: hit?.material,
+      merchant: hit?.merchant,
+      offerCount: hit?.offerCount,
+      warranty: hit?.warranty,
+    });
+
     if (!hit) {
       console.warn("no offer:", asin);
       continue;
     }
 
-    // 価格がある時だけ upsertOffers（OfferInput は url が必須）
+    // 1) 価格があれば offers / priceHistory を更新
     if (isNumber(hit.price)) {
       const url = hit.url ?? `https://www.amazon.co.jp/dp/${asin}`;
       await upsertOffers(asin, { price: hit.price, url }, siteId);
-      console.log("done:", siteId, asin, hit.price);
+      console.log("[offer] upsert:", siteId, asin, hit.price);
     } else {
-      console.log("skip (no price):", asin);
+      console.log("[offer] skip (no price):", asin);
     }
+
+    // 2) 付随情報を products にマージ（title/brand/image/specs/trust）
+    const ref = db.collection("products").doc(`${siteId}_${asin}`);
+    const now = Date.now();
+
+    const patch: Record<string, unknown> = {
+      siteId,
+      asin,
+      updatedAt: now,
+    };
+    if (hit.title) patch["title"] = hit.title;
+    if (hit.brand) patch["brand"] = hit.brand;
+    if (hit.imageUrl) patch["imageUrl"] = hit.imageUrl;
+    if (hit.url && isNumber(hit.price)) {
+      patch["bestPrice"] = {
+        price: hit.price,
+        source: "amazon",
+        url: hit.url,
+        updatedAt: now,
+      };
+    }
+
+    // specs
+    if (hit.features || hit.dimensions || hit.material) {
+      patch["specs"] = {
+        ...(hit.dimensions ? { dimensions: hit.dimensions } : {}),
+        ...(hit.material ? { material: hit.material } : {}),
+        ...(hit.features ? { features: hit.features } : {}),
+      };
+    }
+
+    // trust（Firestore がシリアライズできるプリミティブに限定）
+    const merchant =
+      typeof hit.merchant === "string" ? hit.merchant : undefined;
+    const offerCount =
+      typeof hit.offerCount === "number" ? hit.offerCount : undefined;
+    const warrantyStr =
+      typeof hit.warranty === "string"
+        ? hit.warranty
+        : hit.warranty == null
+        ? undefined
+        : String(hit.warranty);
+
+    if (merchant || typeof offerCount === "number" || warrantyStr) {
+      patch["trust"] = {
+        ...(merchant ? { merchant } : {}),
+        ...(typeof offerCount === "number" ? { offerCount } : {}),
+        ...(warrantyStr ? { warranty: warrantyStr } : {}),
+      };
+    }
+
+    await ref.set(
+      {
+        categoryId: "gaming-chair", // 必要に応じて上書き
+        ...patch,
+        createdAt: now, // 既存なら上書きされない
+      },
+      { merge: true }
+    );
+    console.log("[product] merged:", `${siteId}_${asin}`);
   }
 }
 

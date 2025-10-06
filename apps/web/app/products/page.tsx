@@ -1,11 +1,15 @@
-import type { Product } from "@affiscope/shared-types";
-import { getServerSiteId } from "@/lib/site-server";
-import { fsRunQuery, vNum, vStr, docIdFromName } from "@/lib/firestore-rest";
-import ProductCard from "@/components/products/ProductCard";
-import CategoryTabs, {
-  type CategoryTab,
-} from "@/components/categories/CategoryTabs";
+// apps/web/app/products/page.tsx
+import type { Product, OfferSource } from "@affiscope/shared-types";
 import Link from "next/link";
+import ProductCard from "@/components/products/ProductCard";
+import {
+  fsRunQuery,
+  fsGetString as vStr,
+  fsGetNumber as vNum,
+  fsGetStringArray as vStrArr, // 追加
+  fsGetBoolean as vBool, // ← これを追加
+  docIdFromName,
+} from "@/lib/firestore-rest";
 
 export const revalidate = 60;
 export const dynamic = "force-dynamic";
@@ -23,17 +27,15 @@ function timeago(ts?: number) {
   return `${d}日前`;
 }
 
-/** categories を siteId だけで取得 → 取得後に order で並べ替え（インデックス不要） */
-async function fetchAllCategories(
-  siteId: string
-): Promise<(CategoryTab & { order: number })[]> {
+/** categories を siteId だけで取得 → order で並べ替え */
+async function fetchAllCategories(siteId: string) {
   const docs = await fsRunQuery({
     collection: "categories",
     where: [{ field: "siteId", value: siteId }],
     limit: 200,
   }).catch(() => []);
 
-  const rows = docs.map((d: any) => {
+  const rows = docs.map((d) => {
     const f = d.fields;
     return {
       id: docIdFromName(d.name),
@@ -46,36 +48,7 @@ async function fetchAllCategories(
   return rows;
 }
 
-/** サイト設定（REST）— トップの実装と同等の軽量版 */
-async function loadSiteConfigLocal(siteId: string): Promise<{
-  siteId: string;
-  displayName?: string;
-  categoryPreset?: string[];
-}> {
-  const projectId = process.env.NEXT_PUBLIC_FB_PROJECT_ID!;
-  const apiKey = process.env.NEXT_PUBLIC_FB_API_KEY!;
-  const url = new URL(
-    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/sites/${encodeURIComponent(
-      siteId
-    )}`
-  );
-  url.searchParams.set("key", apiKey);
-  const res = await fetch(url.toString(), { cache: "no-store" });
-  if (!res.ok) throw new Error(`fetch site failed: ${res.status}`);
-  const json: any = await res.json();
-  const fields = json.fields ?? {};
-  const arr = (k: string) =>
-    (fields?.[k]?.arrayValue?.values ?? []).map(
-      (v: any) => v?.stringValue ?? ""
-    );
-  return {
-    siteId,
-    displayName: fields?.displayName?.stringValue,
-    categoryPreset: arr("categoryPreset"),
-  };
-}
-
-/** categoryId（= slug相当）で商品を取得。フォールバック付き */
+/** categoryId で products を取得（createdAt desc を優先、無ければ無ソートで再取得） */
 async function fetchProductsByCategoryId(
   siteId: string,
   categoryId: string
@@ -97,51 +70,71 @@ async function fetchProductsByCategoryId(
       : base;
 
     const docs = await fsRunQuery(q).catch(() => []);
-    return docs.map((d: any) => {
+    return docs.map((d) => {
       const f = d.fields;
-      return {
+
+      // bestPrice はネスト: bestPrice.price / bestPrice.url / bestPrice.source / bestPrice.updatedAt
+      const bpPrice = vNum(f, "bestPrice.price");
+      const bpUrl = vStr(f, "bestPrice.url");
+      // ❌ ここが構文エラーになっていた: as Product["bestPrice"]?.["source"]
+      // ⭕ リテラルUnionでOK（shared-typesを変えない前提）
+      const bpSource = vStr(f, "bestPrice.source") as OfferSource | undefined;
+
+      const bpUpdatedAt = vNum(f, "bestPrice.updatedAt");
+
+      const p: Product = {
         asin: docIdFromName(d.name),
         title: vStr(f, "title") ?? "",
         brand: vStr(f, "brand") ?? undefined,
         imageUrl: vStr(f, "imageUrl") ?? undefined,
         categoryId: vStr(f, "categoryId") ?? categoryId,
         siteId,
-        tags: [],
+
+        // ← Product 型に存在する項目だけ入れる
+        affiliateUrl: vStr(f, "affiliateUrl") ?? undefined,
+        url: vStr(f, "url") ?? undefined,
+        inStock: vBool(f, "inStock"),
+        lastSeenAt: vNum(f, "lastSeenAt"),
+        source:
+          (vStr(f, "source") as "amazon" | "rakuten" | undefined) ?? undefined,
+        tags: vStrArr(f, "tags") ?? [],
         specs: undefined,
+
         offers: [],
-        bestPrice: (() => {
-          const price = vNum(f, "bestPrice.price");
-          const url = vStr(f, "bestPrice.url");
-          const source = vStr(f, "bestPrice.source") as
-            | "amazon"
-            | "rakuten"
-            | undefined;
-          const updatedAt = vNum(f, "bestPrice.updatedAt");
-          return typeof price === "number" &&
-            url &&
-            source &&
-            typeof updatedAt === "number"
-            ? { price, url, source, updatedAt }
-            : undefined;
-        })(),
+        bestPrice:
+          typeof bpPrice === "number" &&
+          typeof bpUpdatedAt === "number" &&
+          bpUrl &&
+          bpSource
+            ? {
+                price: bpPrice,
+                url: bpUrl,
+                source: bpSource,
+                updatedAt: bpUpdatedAt,
+              }
+            : undefined,
         priceHistory: [],
-        aiSummary: undefined,
+
+        aiSummary: vStr(f, "aiSummary") ?? undefined,
         views: vNum(f, "views") ?? 0,
         createdAt: vNum(f, "createdAt") ?? 0,
         updatedAt: vNum(f, "updatedAt") ?? 0,
-      } as Product;
+      };
+
+      return p;
     });
   };
 
   let rows = await run(true);
   if (rows.length === 0) rows = await run(false);
   if (rows.length === 0) {
+    // 最後の保険：siteId のみで取得
     const docs = await fsRunQuery({
       collection: "products",
       where: [{ field: "siteId", value: siteId }],
       limit: 200,
     }).catch(() => []);
-    rows = docs.map((d: any) => {
+    rows = docs.map((d) => {
       const f = d.fields;
       return {
         asin: docIdFromName(d.name),
@@ -150,27 +143,10 @@ async function fetchProductsByCategoryId(
         imageUrl: vStr(f, "imageUrl") ?? undefined,
         categoryId: vStr(f, "categoryId") ?? "",
         siteId,
-        tags: [],
-        specs: undefined,
+        tags: vStrArr(f, "tags") ?? [],
         offers: [],
-        bestPrice: (() => {
-          const price = vNum(f, "bestPrice.price");
-          const url = vStr(f, "bestPrice.url");
-          const source = vStr(f, "bestPrice.source") as
-            | "amazon"
-            | "rakuten"
-            | undefined;
-          const updatedAt = vNum(f, "bestPrice.updatedAt");
-          return typeof price === "number" &&
-            url &&
-            source &&
-            typeof updatedAt === "number"
-            ? { price, url, source, updatedAt }
-            : undefined;
-        })(),
+        bestPrice: undefined,
         priceHistory: [],
-        aiSummary: undefined,
-        views: vNum(f, "views") ?? 0,
         createdAt: vNum(f, "createdAt") ?? 0,
         updatedAt: vNum(f, "updatedAt") ?? 0,
       } as Product;
@@ -187,7 +163,7 @@ export default async function ProductsPage({
 }: {
   searchParams?: SP;
 }) {
-  const siteId = process.env.NEXT_PUBLIC_SITE_ID ?? getServerSiteId();
+  const siteId = process.env.NEXT_PUBLIC_SITE_ID ?? "chairscope";
   const categorySlug = searchParams?.category ?? "gaming-chair";
   const sort: SortKey = (searchParams?.sort as SortKey) ?? "price_asc";
   const pricedOnly = searchParams?.priced === "1";
@@ -195,17 +171,13 @@ export default async function ProductsPage({
   // 1) カテゴリ
   let cats = await fetchAllCategories(siteId);
   if (cats.length === 0) {
-    const site = await loadSiteConfigLocal(siteId).catch(() => null);
-    const preset = site?.categoryPreset ?? [];
-    cats = preset.map((slug) => ({ id: slug, name: slug, slug, order: 0 }));
-  }
-  if (cats.length === 0) {
+    // フォールバック（site config を見に行くのは省略。必要なら既存 loadSiteConfigLocal を流用）
     cats = [
       { id: categorySlug, name: categorySlug, slug: categorySlug, order: 0 },
     ];
   }
 
-  // 2) 商品取得 → フィルター/並び替え（サーバー側で実施）
+  // 2) 商品取得 → フィルター & ソート
   let items = await fetchProductsByCategoryId(siteId, categorySlug);
 
   if (pricedOnly) {
@@ -222,13 +194,13 @@ export default async function ProductsPage({
     items.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   }
 
-  // 3) メタ情報（最終更新 = 一覧中の最大 updatedAt / bestPrice.updatedAt）
+  // 3) 最終更新
   const lastUpdated = items.reduce<number>((max, p) => {
     const u = p.bestPrice?.updatedAt ?? p.updatedAt ?? 0;
     return u > max ? u : max;
   }, 0);
 
-  // 4) クエリリンク生成
+  // 4) クエリリンク
   const href = (next: Partial<SP>) => {
     const params = new URLSearchParams();
     params.set("category", next.category ?? categorySlug);
@@ -240,29 +212,20 @@ export default async function ProductsPage({
 
   return (
     <main className="mx-auto max-w-6xl p-6">
-      {/* breadcrumb */}
       <nav className="text-sm text-gray-500">
         <Link href="/" className="underline">
           ホーム
         </Link>
       </nav>
 
-      {/* H1 */}
       <h1 className="mt-3 text-2xl font-bold">商品一覧（{categorySlug}）</h1>
 
-      {/* カテゴリタブ */}
-      <CategoryTabs
-        categories={cats.map(({ id, name, slug }) => ({ id, name, slug }))}
-        activeSlug={categorySlug}
-      />
-
-      {/* コントロールバー（信頼の見える化） */}
+      {/* コントロールバー */}
       <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border bg-white px-4 py-2 text-sm">
         <div className="flex items-center gap-2">
           <span className="opacity-70">表示順:</span>
           <Link
             href={href({ sort: "price_asc" })}
-            aria-current={sort === "price_asc" ? "page" : undefined}
             className={`rounded px-2 py-1 ${
               sort === "price_asc"
                 ? "bg-gray-100 font-medium"
@@ -273,7 +236,6 @@ export default async function ProductsPage({
           </Link>
           <Link
             href={href({ sort: "price_desc" })}
-            aria-current={sort === "price_desc" ? "page" : undefined}
             className={`rounded px-2 py-1 ${
               sort === "price_desc"
                 ? "bg-gray-100 font-medium"
@@ -284,7 +246,6 @@ export default async function ProductsPage({
           </Link>
           <Link
             href={href({ sort: "newest" })}
-            aria-current={sort === "newest" ? "page" : undefined}
             className={`rounded px-2 py-1 ${
               sort === "newest" ? "bg-gray-100 font-medium" : "hover:underline"
             }`}
@@ -311,7 +272,6 @@ export default async function ProductsPage({
         <div className="mx-2 h-4 w-px bg-gray-200" />
 
         <div className="flex items-center gap-2 opacity-80">
-          <span>データ元: Amazon</span>
           <span>最終更新: {timeago(lastUpdated)}</span>
           <span className="opacity-70">※本ページは広告を含みます</span>
         </div>
