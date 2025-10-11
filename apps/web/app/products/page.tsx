@@ -6,35 +6,52 @@ import {
   fsRunQuery,
   fsGetString as vStr,
   fsGetNumber as vNum,
-  fsGetStringArray as vStrArr, // 追加
-  fsGetBoolean as vBool, // ← これを追加
+  fsGetStringArray as vStrArr,
+  fsGetBoolean as vBool,
   docIdFromName,
 } from "@/lib/firestore-rest";
+import { getSiteEntry } from "@/lib/site-server";
+import { getSiteConfig } from "@/lib/site-config";
 
 export const revalidate = 60;
 export const dynamic = "force-dynamic";
 
-/** ===== utils ===== */
+type FsQueryArg = {
+  projectId?: string;
+  apiKey?: string;
+  collection: string;
+  where?: {
+    field: string;
+    op?:
+      | "EQUAL"
+      | "GREATER_THAN"
+      | "LESS_THAN"
+      | "GREATER_THAN_OR_EQUAL"
+      | "LESS_THAN_OR_EQUAL";
+    value: string | number | boolean | null;
+  }[];
+  orderBy?: { field: string; direction?: "ASCENDING" | "DESCENDING" }[];
+  limit?: number;
+};
+
 function timeago(ts?: number) {
   if (!ts) return "—";
   const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
   if (s < 60) return `${s}秒前`;
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}分前`;
-  const h = Math.floor(m / 60);
+  const h = Math.floor(s / 60 / 60);
   if (h < 24) return `${h}時間前`;
   const d = Math.floor(h / 24);
   return `${d}日前`;
 }
 
-/** categories を siteId だけで取得 → order で並べ替え */
 async function fetchAllCategories(siteId: string) {
   const docs = await fsRunQuery({
     collection: "categories",
     where: [{ field: "siteId", value: siteId }],
     limit: 200,
   }).catch(() => []);
-
   const rows = docs.map((d) => {
     const f = d.fields;
     return {
@@ -48,13 +65,13 @@ async function fetchAllCategories(siteId: string) {
   return rows;
 }
 
-/** categoryId で products を取得（createdAt desc を優先、無ければ無ソートで再取得） */
 async function fetchProductsByCategoryId(
   siteId: string,
   categoryId: string
 ): Promise<Product[]> {
   const run = async (withOrder: boolean) => {
-    const base = {
+    // ★ readonly 推論を避けるため "as const" は使わない
+    const base: FsQueryArg = {
       collection: "products",
       where: [
         { field: "siteId", value: siteId },
@@ -62,24 +79,20 @@ async function fetchProductsByCategoryId(
       ],
       limit: 200,
     };
-    const q = withOrder
+
+    const q: FsQueryArg = withOrder
       ? {
           ...base,
-          orderBy: [{ field: "createdAt", direction: "DESCENDING" as const }],
+          orderBy: [{ field: "createdAt", direction: "DESCENDING" }],
         }
       : base;
 
     const docs = await fsRunQuery(q).catch(() => []);
     return docs.map((d) => {
       const f = d.fields;
-
-      // bestPrice はネスト: bestPrice.price / bestPrice.url / bestPrice.source / bestPrice.updatedAt
       const bpPrice = vNum(f, "bestPrice.price");
       const bpUrl = vStr(f, "bestPrice.url");
-      // ❌ ここが構文エラーになっていた: as Product["bestPrice"]?.["source"]
-      // ⭕ リテラルUnionでOK（shared-typesを変えない前提）
       const bpSource = vStr(f, "bestPrice.source") as OfferSource | undefined;
-
       const bpUpdatedAt = vNum(f, "bestPrice.updatedAt");
 
       const p: Product = {
@@ -89,8 +102,6 @@ async function fetchProductsByCategoryId(
         imageUrl: vStr(f, "imageUrl") ?? undefined,
         categoryId: vStr(f, "categoryId") ?? categoryId,
         siteId,
-
-        // ← Product 型に存在する項目だけ入れる
         affiliateUrl: vStr(f, "affiliateUrl") ?? undefined,
         url: vStr(f, "url") ?? undefined,
         inStock: vBool(f, "inStock"),
@@ -99,7 +110,6 @@ async function fetchProductsByCategoryId(
           (vStr(f, "source") as "amazon" | "rakuten" | undefined) ?? undefined,
         tags: vStrArr(f, "tags") ?? [],
         specs: undefined,
-
         offers: [],
         bestPrice:
           typeof bpPrice === "number" &&
@@ -114,13 +124,11 @@ async function fetchProductsByCategoryId(
               }
             : undefined,
         priceHistory: [],
-
         aiSummary: vStr(f, "aiSummary") ?? undefined,
         views: vNum(f, "views") ?? 0,
         createdAt: vNum(f, "createdAt") ?? 0,
         updatedAt: vNum(f, "updatedAt") ?? 0,
       };
-
       return p;
     });
   };
@@ -128,7 +136,6 @@ async function fetchProductsByCategoryId(
   let rows = await run(true);
   if (rows.length === 0) rows = await run(false);
   if (rows.length === 0) {
-    // 最後の保険：siteId のみで取得
     const docs = await fsRunQuery({
       collection: "products",
       where: [{ field: "siteId", value: siteId }],
@@ -163,26 +170,34 @@ export default async function ProductsPage({
 }: {
   searchParams?: SP;
 }) {
-  const siteId = process.env.NEXT_PUBLIC_SITE_ID ?? "chairscope";
-  const categorySlug = searchParams?.category ?? "gaming-chair";
+  const s = getSiteEntry(); // siteId / categoryPreset / domain
+  const cfg = getSiteConfig(); // urlOrigin など（構造化データ用）
+
+  // 1) カテゴリ一覧
+  let cats = await fetchAllCategories(s.siteId);
+
+  // 2) デフォルトカテゴリ（クエリ > preset[0] > Firestore先頭 > “default”）
+  const presetFirst = s.categoryPreset?.[0];
+  const categorySlug =
+    searchParams?.category ??
+    presetFirst ??
+    (cats[0]?.slug || cats[0]?.id) ??
+    "default";
+
   const sort: SortKey = (searchParams?.sort as SortKey) ?? "price_asc";
   const pricedOnly = searchParams?.priced === "1";
 
-  // 1) カテゴリ
-  let cats = await fetchAllCategories(siteId);
   if (cats.length === 0) {
-    // フォールバック（site config を見に行くのは省略。必要なら既存 loadSiteConfigLocal を流用）
     cats = [
       { id: categorySlug, name: categorySlug, slug: categorySlug, order: 0 },
     ];
   }
 
-  // 2) 商品取得 → フィルター & ソート
-  let items = await fetchProductsByCategoryId(siteId, categorySlug);
+  // 3) 商品取得
+  let items = await fetchProductsByCategoryId(s.siteId, categorySlug);
 
-  if (pricedOnly) {
+  if (pricedOnly)
     items = items.filter((p) => typeof p.bestPrice?.price === "number");
-  }
 
   if (sort === "price_asc" || sort === "price_desc") {
     items.sort((a, b) => {
@@ -194,13 +209,11 @@ export default async function ProductsPage({
     items.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   }
 
-  // 3) 最終更新
   const lastUpdated = items.reduce<number>((max, p) => {
     const u = p.bestPrice?.updatedAt ?? p.updatedAt ?? 0;
     return u > max ? u : max;
   }, 0);
 
-  // 4) クエリリンク
   const href = (next: Partial<SP>) => {
     const params = new URLSearchParams();
     params.set("category", next.category ?? categorySlug);
@@ -212,7 +225,7 @@ export default async function ProductsPage({
 
   return (
     <main className="mx-auto max-w-6xl p-6">
-      {/* breadcrumb */}
+      {/* パンくず */}
       <nav className="mb-2 text-sm text-gray-500">
         <Link href="/" className="underline">
           ホーム
@@ -221,7 +234,7 @@ export default async function ProductsPage({
         <span className="opacity-70">商品一覧</span>
       </nav>
 
-      {/* 構造化データ: BreadcrumbList */}
+      {/* 構造化データ */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -233,28 +246,21 @@ export default async function ProductsPage({
                 "@type": "ListItem",
                 position: 1,
                 name: "ホーム",
-                item:
-                  (
-                    process.env.NEXT_PUBLIC_SITE_URL ??
-                    "https://www.chairscope.com"
-                  ).replace(/\/$/, "") + "/",
+                item: `${cfg.urlOrigin}/`,
               },
               {
                 "@type": "ListItem",
                 position: 2,
                 name: "商品一覧",
-                item:
-                  (
-                    process.env.NEXT_PUBLIC_SITE_URL ??
-                    "https://www.chairscope.com"
-                  ).replace(/\/$/, "") +
-                  `/products?category=${encodeURIComponent(categorySlug)}`,
+                item: `${cfg.urlOrigin}/products?category=${encodeURIComponent(
+                  categorySlug
+                )}`,
               },
             ],
           }),
         }}
       />
-      {/* ▲▲▲ ここまで貼り付け ▲▲▲ */}
+
       <nav className="text-sm text-gray-500">
         <Link href="/" className="underline">
           ホーム

@@ -1,6 +1,4 @@
 // apps/web/lib/site-catalog.ts
-// サイト定義を firebase/functions/sites/*.json から自動ロード（ビルド時）
-// ※ サーバ専用モジュール。クライアントから import しないこと。
 import "server-only";
 import fs from "fs";
 import path from "path";
@@ -22,10 +20,12 @@ export type SiteAnalytics = {
 export type SiteEntry = {
   siteId: string;
   displayName: string;
-  domain: string; // canonical domain (e.g. "www.chairscope.com" or "chairscope.com")
+  domain: string; // e.g. "www.chairscope.com"
   brand: Brand;
   features: { blogs?: boolean; ranking?: boolean };
   analytics?: SiteAnalytics;
+  /** ← 追加：デフォルトカテゴリ（sites/*.json の categoryPreset を反映） */
+  categoryPreset?: string[];
 };
 
 export type SiteCatalog = {
@@ -36,8 +36,6 @@ export type SiteCatalog = {
 // --------- ローダー ---------
 function loadSitesFromJson(): SiteEntry[] {
   const dir = resolveSitesDir();
-
-  // JSONファイルを列挙
   const files = fs
     .readdirSync(dir, { withFileTypes: true })
     .filter((d) => d.isFile() && d.name.endsWith(".json"))
@@ -62,11 +60,12 @@ function loadSitesFromJson(): SiteEntry[] {
         },
         features: j.features ?? {},
         analytics: j.analytics ?? {},
+        // ★ ここで通す
+        categoryPreset: Array.isArray(j.categoryPreset) ? j.categoryPreset : [],
       };
 
       sites.push(entry);
     } catch (e) {
-      // 1ファイル壊れていても他は読めるようにする
       console.warn(`[site-catalog] failed to read ${file}:`, e);
     }
   }
@@ -80,13 +79,12 @@ export const siteCatalog: SiteCatalog = {
   sites: loadSitesFromJson(),
 } as const;
 
-// exact match 用に www 有無も吸収したマップを用意
+// exact match 用に www 有無も吸収したマップ
 export const domainToSiteId: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   for (const s of siteCatalog.sites) {
     const canonical = s.domain.toLowerCase();
     map[canonical] = s.siteId;
-    // www なし / あり の揺れも同一視
     const naked = canonical.replace(/^www\./, "");
     map[naked] = s.siteId;
     map[`www.${naked}`] = s.siteId;

@@ -1,7 +1,11 @@
+// apps/web/components/common/SiteHeader.tsx
 import Link from "next/link";
+import { getSiteEntry } from "@/lib/site-server";
 
 export default function SiteHeader() {
-  const siteName = process.env.NEXT_PUBLIC_SITE_NAME ?? "ChairScope";
+  const s = getSiteEntry(); // サーバー専用OK
+  const siteName = s.displayName;
+
   return (
     <header className="sticky top-0 z-40 border-b bg-white/90 backdrop-blur">
       <div className="mx-auto max-w-6xl px-6 h-14 flex items-center justify-between">
