@@ -212,6 +212,49 @@ export default async function ProductsPage({
 
   return (
     <main className="mx-auto max-w-6xl p-6">
+      {/* breadcrumb */}
+      <nav className="mb-2 text-sm text-gray-500">
+        <Link href="/" className="underline">
+          ホーム
+        </Link>
+        <span className="mx-2">/</span>
+        <span className="opacity-70">商品一覧</span>
+      </nav>
+
+      {/* 構造化データ: BreadcrumbList */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            itemListElement: [
+              {
+                "@type": "ListItem",
+                position: 1,
+                name: "ホーム",
+                item:
+                  (
+                    process.env.NEXT_PUBLIC_SITE_URL ??
+                    "https://www.chairscope.com"
+                  ).replace(/\/$/, "") + "/",
+              },
+              {
+                "@type": "ListItem",
+                position: 2,
+                name: "商品一覧",
+                item:
+                  (
+                    process.env.NEXT_PUBLIC_SITE_URL ??
+                    "https://www.chairscope.com"
+                  ).replace(/\/$/, "") +
+                  `/products?category=${encodeURIComponent(categorySlug)}`,
+              },
+            ],
+          }),
+        }}
+      />
+      {/* ▲▲▲ ここまで貼り付け ▲▲▲ */}
       <nav className="text-sm text-gray-500">
         <Link href="/" className="underline">
           ホーム

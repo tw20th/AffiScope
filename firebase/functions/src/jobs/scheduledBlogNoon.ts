@@ -14,12 +14,32 @@ function getOpenAI(): OpenAI {
   return (_openai ??= new OpenAI({ apiKey: key }));
 }
 
+async function getBlogEnabledSiteIds(): Promise<string[]> {
+  const snap = await db
+    .collection("sites")
+    .where("features.blogs", "==", true)
+    .get();
+  return snap.docs
+    .map((d) => (d.data() as { siteId?: string }).siteId!)
+    .filter(Boolean);
+}
+
 function dailySlug(siteId: string, asin: string, date = new Date()) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `price-drop-${siteId}_${asin}-${y}${m}${d}`;
 }
+
+type ProductDoc = {
+  asin: string;
+  siteId: string;
+  productName?: string;
+  name?: string;
+  imageUrl?: string | null;
+  createdAt?: number;
+  updatedAt?: number;
+};
 
 async function createBlog(
   siteId: string,
@@ -72,44 +92,44 @@ async function createBlog(
     );
 
   console.log(`[noon] created blogs/${slug}`);
-  return { created: 1 };
+  return { siteId, created: 1 };
 }
 
-async function generateOneNewBlog() {
-  // 昼は「未掲載の新顔」を少し優先
+async function generateOneNewBlogForSite(siteId: string) {
+  // 昼は「未掲載の新顔」を優先（siteId スコープ）
   const s = await db
     .collection("products")
+    .where("siteId", "==", siteId)
     .orderBy("createdAt", "desc")
     .limit(20)
     .get();
-  const candidate = s.docs.find(Boolean);
-  if (!candidate) return { created: 0 };
 
-  const p = candidate.data() as any;
-  const asin = p.asin as string;
-  const siteId = p.siteId as string;
+  const candidate = s.docs[0];
+  if (!candidate) return { siteId, created: 0 };
+
+  const p = candidate.data() as ProductDoc;
+  const asin = p.asin;
   const productName = p.productName ?? p.name ?? "(no name)";
   const slug = dailySlug(siteId, asin);
 
   const exists = await db.collection("blogs").doc(slug).get();
   if (exists.exists) {
-    console.log(`[noon] already exists ${slug}, fallback to updatedAt pick.`);
-    // フォールバック: updatedAt desc から1件
+    console.log(`[noon] already exists ${slug}, fallback by updatedAt.`);
     const f = await db
       .collection("products")
+      .where("siteId", "==", siteId)
       .orderBy("updatedAt", "desc")
       .limit(10)
       .get();
-    const alt = f.docs.find(Boolean);
-    if (!alt) return { created: 0 };
-    const ap = alt.data() as any;
-    const as = ap.asin as string;
-    const st = ap.siteId as string;
-    const sl = dailySlug(st, as);
+    const alt = f.docs[0];
+    if (!alt) return { siteId, created: 0 };
+    const ap = alt.data() as ProductDoc;
+    const as = ap.asin;
+    const sl = dailySlug(siteId, as);
     const ex = await db.collection("blogs").doc(sl).get();
-    if (ex.exists) return { created: 0 };
+    if (ex.exists) return { siteId, created: 0 };
     return createBlog(
-      st,
+      siteId,
       as,
       ap.productName ?? ap.name ?? "(no name)",
       ap.imageUrl ?? null,
@@ -125,4 +145,11 @@ export const scheduledBlogNoon = functions
   .runWith({ secrets: ["OPENAI_API_KEY"] })
   .pubsub.schedule("0 12 * * *") // JST 12:00
   .timeZone("Asia/Tokyo")
-  .onRun(async () => generateOneNewBlog());
+  .onRun(async () => {
+    const siteIds = await getBlogEnabledSiteIds();
+    const results = [];
+    for (const siteId of siteIds) {
+      results.push(await generateOneNewBlogForSite(siteId));
+    }
+    return { results };
+  });

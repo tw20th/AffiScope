@@ -8,13 +8,26 @@
     "logoUrl": "/logos/chairscope.svg",
     "theme": "dark"
   },
+
+  "analytics": {
+    "ga4MeasurementId": "G-YMFV953LLQ"
+  },
+
   "categoryPreset": ["gaming-chair"],
+  "homeCopy": {
+    "title": "腰・蒸れ・姿勢の悩みから選ぶゲーミングチェア",
+    "subtitle": "在宅ワークの不快を減らす“合う椅子”を、価格と新着ブログで毎日更新",
+    "dataSourceLabel": "Amazon",
+    "note": "本ページは広告を含みます",
+    "featuredTitle": "悩み別おすすめ",
+    "blogsTitle": "悩み解決ガイド"
+  },
   "defaultPersona": "在宅ワーカー",
   "painRules": [
     {
       "id": "back_pain_long_sitting",
       "label": "腰痛で長時間座れない",
-      "match": { "anyTags": ["腰痛対策", "ランバー", "姿勢"] },
+      "match": { "anyTags": ["腰痛対策", "ランバー", "姿勢改善"] },
       "personas": ["在宅ワーカー", "ゲーマー"]
     },
     {
@@ -55,7 +68,9 @@
       "HDMI 2"
     ]
   },
-  "affiliate": { "amazon": { "partnerTag": "tw20th0c-22" } },
+  "affiliate": {
+    "amazon": { "partnerTag": "tw20th0c-22", "marketplace": "JP" }
+  },
   "features": { "blogs": true, "ranking": true },
   "seeds": { "asins": ["B086JTCGZR", "B07Y8Y2V8D", "B08D6Z7S94"] },
   "discovery": {
@@ -65,7 +80,8 @@
       "gaming chair",
       "オットマン 付き ゲーミング",
       "リクライニング ゲーミング",
-      "ランバーサポート ゲーミング"
+      "ランバーサポート ゲーミング",
+      "メッシュ チェア"
     ],
     "searchIndex": "OfficeProducts",
     "maxPerRun": 25,
@@ -74,7 +90,14 @@
     "relaxedOnFirstImport": false,
     "cooldownDays": 10,
     "minPrice": 5000,
-    "maxPrice": 120000
+    "maxPrice": 120000,
+    "hotBoostRules": [
+      { "type": "seed" },
+      { "type": "priceBetween", "min": 10000, "max": 25000 },
+      { "type": "keywordMatches", "pattern": "メッシュ|通気性|オットマン" },
+      { "type": "tagWillBe", "tag": "腰痛対策" },
+      { "type": "tagWillBe", "tag": "蒸れ対策" }
+    ]
   },
   "tagRules": [
     {
@@ -83,6 +106,16 @@
         { "type": "featureMatches", "pattern": "ランバー|腰(サポート)?" },
         { "type": "featureMatches", "pattern": "リクライニング|180度|135度" },
         { "type": "titleMatches", "pattern": "腰" }
+      ]
+    },
+    {
+      "tag": "姿勢改善",
+      "any": [
+        {
+          "type": "featureMatches",
+          "pattern": "姿勢|S字|アームレスト\\s?(3D|4D)|調整(肘|アーム)"
+        },
+        { "type": "titleMatches", "pattern": "姿勢|4D|アームレスト" }
       ]
     },
     {
@@ -112,6 +145,27 @@
       ]
     }
   ],
+  "contentPlan": {
+    "daily": {
+      "morningIntent": "price-drop",
+      "noonIntent": "who-fit",
+      "rewriteAt": "23:00",
+      "rewriteMinScore": 85
+    },
+    "weekly": { "pillarIntent": "comparison", "weekday": "SU", "time": "09:00" }
+  },
+  "keywordPools": {
+    "comparison": [
+      "ゲーミングチェア メッシュ 比較",
+      "ゲーミングチェア 腰痛 ランバー 比較",
+      "オットマン付き ゲーミングチェア 比較"
+    ],
+    "guide": [
+      "ゲーミングチェア 選び方",
+      "ゲーミングチェア 失敗しない コスパ",
+      "在宅ワーク 椅子 姿勢 改善"
+    ]
+  },
   "createdAt": 0,
   "updatedAt": 0
 }

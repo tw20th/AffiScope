@@ -14,6 +14,17 @@ function getOpenAI(): OpenAI {
   return (_openai ??= new OpenAI({ apiKey: key }));
 }
 
+/** Firestore の sites コレクションから、blogs 機能が有効な siteId を取得 */
+async function getBlogEnabledSiteIds(): Promise<string[]> {
+  const snap = await db
+    .collection("sites")
+    .where("features.blogs", "==", true)
+    .get();
+  return snap.docs
+    .map((d) => (d.data() as { siteId?: string }).siteId!)
+    .filter(Boolean);
+}
+
 /** 日付付きslug（上書き防止） */
 function dailySlug(siteId: string, asin: string, date = new Date()) {
   const y = date.getFullYear();
@@ -22,40 +33,53 @@ function dailySlug(siteId: string, asin: string, date = new Date()) {
   return `price-drop-${siteId}_${asin}-${y}${m}${d}`;
 }
 
-/** 朝：1件だけ新規記事を生成して公開 */
-async function generateOneNewBlog() {
-  const now = Date.now();
+type ProductDoc = {
+  asin: string;
+  siteId: string;
+  productName?: string;
+  name?: string;
+  imageUrl?: string | null;
+  categoryId?: string;
+  updatedAt?: number;
+};
 
-  // 候補: 24h → 7d → 全体 updatedAt desc
+async function pickCandidateForSite(siteId: string) {
+  const now = Date.now();
   const windows = [24, 24 * 7];
-  let cand: FirebaseFirestore.QueryDocumentSnapshot | null = null;
 
   for (const h of windows) {
     const s = await db
       .collection("products")
+      .where("siteId", "==", siteId)
       .where("updatedAt", ">=", now - h * 3600 * 1000)
       .orderBy("updatedAt", "desc")
       .limit(10)
       .get();
-    cand = s.docs.find(Boolean) ?? null;
-    if (cand) break;
-  }
-  if (!cand) {
-    const s = await db
-      .collection("products")
-      .orderBy("updatedAt", "desc")
-      .limit(10)
-      .get();
-    cand = s.docs.find(Boolean) ?? null;
-  }
-  if (!cand) {
-    console.log("[morning] no candidates.");
-    return { created: 0 };
+
+    const cand = s.docs[0];
+    if (cand) return cand;
   }
 
-  const p = cand.data() as any;
-  const asin = p.asin as string;
-  const siteId = p.siteId as string;
+  const s = await db
+    .collection("products")
+    .where("siteId", "==", siteId)
+    .orderBy("updatedAt", "desc")
+    .limit(10)
+    .get();
+
+  return s.docs[0] ?? null;
+}
+
+/** 朝：サイトごとに1件だけ新規記事を生成して公開 */
+async function generateOneNewBlogForSite(siteId: string) {
+  const cand = await pickCandidateForSite(siteId);
+  if (!cand) {
+    console.log(`[morning] no candidates for site=${siteId}`);
+    return { siteId, created: 0 };
+  }
+
+  const p = cand.data() as ProductDoc;
+  const asin = p.asin;
   const productName = p.productName ?? p.name ?? "(no name)";
   const slug = dailySlug(siteId, asin);
 
@@ -63,10 +87,9 @@ async function generateOneNewBlog() {
   const exists = await db.collection("blogs").doc(slug).get();
   if (exists.exists) {
     console.log(`[morning] already exists ${slug}, skip.`);
-    return { created: 0 };
+    return { siteId, created: 0 };
   }
 
-  // 生成（OpenAI はここで初期化）
   const openai = getOpenAI();
   const sys =
     "あなたは日本語のSEOライターです。商品名と価格情報をもとに、検索意図（値下げ情報/購入検討）に合致した短いブログ記事をMarkdownで書いてください。広告表記、見出し、箇条書き、最後にCTA(公式リンク)を含めること。";
@@ -80,6 +103,7 @@ async function generateOneNewBlog() {
     ],
     temperature: 0.3,
   });
+
   const content =
     resp.choices[0]?.message?.content?.trim() || `# ${productName} 値下げ情報`;
 
@@ -91,7 +115,7 @@ async function generateOneNewBlog() {
       {
         slug,
         siteId,
-        status: "published", // 直公開
+        status: "published",
         title: `${productName} 値下げ情報`,
         summary: null,
         content,
@@ -107,7 +131,7 @@ async function generateOneNewBlog() {
     );
 
   console.log(`[morning] created blogs/${slug}`);
-  return { created: 1 };
+  return { siteId, created: 1 };
 }
 
 export const scheduledBlogMorning = functions
@@ -115,4 +139,11 @@ export const scheduledBlogMorning = functions
   .runWith({ secrets: ["OPENAI_API_KEY"] })
   .pubsub.schedule("0 6 * * *") // JST 06:00
   .timeZone("Asia/Tokyo")
-  .onRun(async () => generateOneNewBlog());
+  .onRun(async () => {
+    const siteIds = await getBlogEnabledSiteIds();
+    const results = [];
+    for (const siteId of siteIds) {
+      results.push(await generateOneNewBlogForSite(siteId));
+    }
+    return { results };
+  });

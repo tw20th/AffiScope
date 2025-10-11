@@ -1,23 +1,15 @@
+// apps/web/app/blog/page.tsx
 import Link from "next/link";
 import BlogCard from "@/components/blog/BlogCard";
 import { getServerSiteId } from "@/lib/site-server";
-import { fsRunQuery, vNum, vStr, docIdFromName } from "@/lib/firestore-rest";
+import { fetchBlogs, type BlogRow } from "@/lib/queries";
 
-export const revalidate = 1800; // 30分
+export const revalidate = 1800;
 export const dynamic = "force-dynamic";
 
-type Blog = {
-  slug: string;
-  title: string;
-  summary?: string | null;
-  imageUrl?: string | null;
-  publishedAt?: number;
-  updatedAt?: number;
-  views?: number;
-};
-
 type SortKey = "recent" | "popular";
-type SP = { sort?: SortKey };
+type BlogType = "all" | "pricedrop" | "review" | "comparison";
+type SP = { sort?: SortKey; type?: BlogType };
 
 function formatJp(ts?: number) {
   if (!ts) return "";
@@ -30,64 +22,11 @@ function formatJp(ts?: number) {
   });
 }
 
-async function fetchBlogs(
-  siteId: string,
-  sort: SortKey,
-  take = 40
-): Promise<Blog[]> {
-  try {
-    const orderBy =
-      sort === "popular"
-        ? [{ field: "views", direction: "DESCENDING" as const }]
-        : [{ field: "publishedAt", direction: "DESCENDING" as const }];
-
-    const docs = await fsRunQuery({
-      collection: "blogs",
-      where: [
-        { field: "status", value: "published" },
-        { field: "siteId", value: siteId },
-      ],
-      orderBy,
-      limit: take,
-    });
-
-    return docs.map((d) => ({
-      slug: docIdFromName(d.name),
-      title: vStr(d.fields, "title") ?? "(no title)",
-      summary: vStr(d.fields, "summary") ?? null,
-      imageUrl: vStr(d.fields, "imageUrl") ?? null,
-      publishedAt: vNum(d.fields, "publishedAt") ?? undefined,
-      updatedAt: vNum(d.fields, "updatedAt") ?? undefined,
-      views: vNum(d.fields, "views") ?? 0,
-    }));
-  } catch {
-    const docs = await fsRunQuery({
-      collection: "blogs",
-      where: [
-        { field: "status", value: "published" },
-        { field: "siteId", value: siteId },
-      ],
-      limit: take,
-    }).catch(() => []);
-
-    const rows: Blog[] = docs.map((d) => ({
-      slug: docIdFromName(d.name),
-      title: vStr(d.fields, "title") ?? "(no title)",
-      summary: vStr(d.fields, "summary") ?? null,
-      imageUrl: vStr(d.fields, "imageUrl") ?? null,
-      publishedAt: vNum(d.fields, "publishedAt") ?? undefined,
-      updatedAt: vNum(d.fields, "updatedAt") ?? undefined,
-      views: vNum(d.fields, "views") ?? 0,
-    }));
-
-    rows.sort((a, b) =>
-      sort === "popular"
-        ? (b.views ?? 0) - (a.views ?? 0)
-        : (b.publishedAt ?? b.updatedAt ?? 0) -
-          (a.publishedAt ?? a.updatedAt ?? 0)
-    );
-    return rows;
-  }
+function classify(b: BlogRow): "pricedrop" | "review" | "comparison" {
+  const t = (b.title ?? "").toLowerCase();
+  if (t.includes("値下げ")) return "pricedrop";
+  if (t.includes("レビュー")) return "review";
+  return "comparison";
 }
 
 export async function generateMetadata() {
@@ -105,9 +44,18 @@ export default async function BlogIndex({
 }) {
   const siteId = getServerSiteId();
   const sort: SortKey = (searchParams?.sort as SortKey) ?? "recent";
+  const type: BlogType = (searchParams?.type as BlogType) ?? "all";
 
-  const blogs = await fetchBlogs(siteId, sort, 40);
-  const lastPub = blogs.reduce<number>(
+  const orderBy =
+    sort === "popular"
+      ? [{ field: "views", direction: "DESCENDING" as const }]
+      : [{ field: "publishedAt", direction: "DESCENDING" as const }];
+  const blogs = await fetchBlogs(siteId, orderBy, 40);
+
+  const filtered =
+    type === "all" ? blogs : blogs.filter((b) => classify(b) === type);
+
+  const lastPub = filtered.reduce<number>(
     (max, b) => Math.max(max, b.publishedAt ?? b.updatedAt ?? 0),
     0
   );
@@ -115,15 +63,53 @@ export default async function BlogIndex({
   const href = (next: Partial<SP>) => {
     const params = new URLSearchParams();
     params.set("sort", (next.sort ?? sort) as string);
+    params.set("type", (next.type ?? type) as string);
     return `/blog?${params.toString()}`;
   };
 
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.chairscope.com"
+  ).replace(/\/$/, "");
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
-      <h1 className="text-2xl font-bold">ブログ</h1>
-      <p className="mt-1 text-xs text-gray-500">debug: siteId = {siteId}</p>
+      {/* breadcrumb */}
+      <nav className="text-sm text-gray-500">
+        <Link href="/" className="underline">
+          ホーム
+        </Link>
+        <span className="mx-2">/</span>
+        <span className="opacity-70">ブログ</span>
+      </nav>
 
-      {/* メタ情報＆コントロール */}
+      {/* 構造化データ: BreadcrumbList */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            itemListElement: [
+              {
+                "@type": "ListItem",
+                position: 1,
+                name: "ホーム",
+                item: siteUrl + "/",
+              },
+              {
+                "@type": "ListItem",
+                position: 2,
+                name: "ブログ",
+                item: `${siteUrl}/blog`,
+              },
+            ],
+          }),
+        }}
+      />
+
+      <h1 className="mt-3 text-2xl font-bold">ブログ</h1>
+
+      {/* コントロール */}
       <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border bg-white px-4 py-2 text-sm">
         <div className="flex items-center gap-2">
           <span className="opacity-70">表示順:</span>
@@ -148,18 +134,42 @@ export default async function BlogIndex({
         </div>
 
         <div className="mx-2 h-4 w-px bg-gray-200" />
-        <div className="opacity-80">記事数: {blogs.length}件</div>
+
+        <div className="flex items-center gap-2">
+          <span className="opacity-70">記事タイプ:</span>
+          {(["all", "pricedrop", "review", "comparison"] as const).map((t) => (
+            <Link
+              key={t}
+              href={href({ type: t })}
+              aria-current={type === t ? "page" : undefined}
+              className={`rounded px-2 py-1 ${
+                type === t ? "bg-gray-100 font-medium" : "hover:underline"
+              }`}
+            >
+              {t === "all"
+                ? "すべて"
+                : t === "pricedrop"
+                ? "値下げ"
+                : t === "review"
+                ? "レビュー"
+                : "比較/ガイド"}
+            </Link>
+          ))}
+        </div>
+
+        <div className="mx-2 h-4 w-px bg-gray-200" />
+        <div className="opacity-80">記事数: {filtered.length}件</div>
         <div className="mx-2 h-4 w-px bg-gray-200" />
         <div className="opacity-80">最終公開: {formatJp(lastPub)}</div>
       </div>
 
-      {blogs.length === 0 ? (
+      {filtered.length === 0 ? (
         <p className="mt-4 text-sm text-gray-600">
           公開済みの記事がまだありません。
         </p>
       ) : (
         <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {blogs.map((b) => (
+          {filtered.map((b) => (
             <BlogCard
               key={b.slug}
               slug={b.slug}

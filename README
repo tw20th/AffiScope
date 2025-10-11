@@ -2,3 +2,12 @@ Root: apps/web
 Install: pnpm -C ../.. -r install
 Build: pnpm build
 Include files outside root: ON
+
+ーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーー
+最重要.json ファイルを作成したらこれを実行
+↓
+pnpm run build:sites
+
+firebase/functions/src/scripts/bootstrapSite.ts が.json ファイルの内容を作成します。
+ーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーー
+apps/web/lib/site-catalog.tsにサイトの情報を追加する感じかな？

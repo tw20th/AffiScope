@@ -1,19 +1,15 @@
-import type { Product, OfferSource } from "@affiscope/shared-types";
+// apps/web/app/products/[asin]/page.tsx
+import type { Product } from "@affiscope/shared-types";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-
-import {
-  fsGet,
-  fsRunQuery, // ← 追加
-  docIdFromName, // ← 追加
-  fsGetString as vStr,
-  fsGetNumber as vNum,
-  fsGetStringArray as vStrArr, // ← 追加（tags 用/必要なら）
-  fsGetBoolean as vBool, // ← 追加（inStock 用/必要なら）
-} from "@/lib/firestore-rest";
-import { getServerSiteId } from "@/lib/site-server";
 import Image from "next/image";
-import ProductCard from "@/components/products/ProductCard";
+import { getServerSiteId } from "@/lib/site-server";
+import {
+  fetchProductByAsin,
+  fetchRelated,
+  fetchBlogsByRelatedAsin,
+  type MiniBlog,
+} from "@/lib/queries";
 
 export const revalidate = 60;
 export const dynamic = "force-dynamic";
@@ -39,115 +35,12 @@ const timeago = (ts?: number) => {
   return `${d}日前`;
 };
 
-/* ---------- Firestore REST: 単一ドキュメント取得（docId=ASIN前提） ---------- */
-async function fetchProductByAsin(
-  asin: string,
-  siteId: string
-): Promise<Product | null> {
-  const doc = await fsGet({ path: `products/${encodeURIComponent(asin)}` });
-  if (!doc) return null;
-
-  const f = doc.fields;
-
-  const bpPrice = vNum(f, "bestPrice.price");
-  const bpUrl = vStr(f, "bestPrice.url");
-  const bpSource = vStr(f, "bestPrice.source") as
-    | "amazon"
-    | "rakuten"
-    | undefined;
-  const bpUpdatedAt = vNum(f, "bestPrice.updatedAt");
-
-  const bestPrice =
-    typeof bpPrice === "number" &&
-    typeof bpUpdatedAt === "number" &&
-    bpUrl &&
-    bpSource
-      ? { price: bpPrice, url: bpUrl, source: bpSource, updatedAt: bpUpdatedAt }
-      : undefined;
-
-  return {
-    asin,
-    title: vStr(f, "title") ?? "",
-    brand: vStr(f, "brand") ?? undefined,
-    imageUrl: vStr(f, "imageUrl") ?? undefined,
-    categoryId: vStr(f, "categoryId") ?? "",
-    siteId,
-
-    // 追加分（型あり）
-    affiliateUrl: vStr(f, "affiliateUrl") ?? undefined,
-    url: vStr(f, "url") ?? undefined,
-    inStock: vBool(f, "inStock"),
-    lastSeenAt: vNum(f, "lastSeenAt"),
-    source:
-      (vStr(f, "source") as "amazon" | "rakuten" | undefined) ?? undefined,
-
-    tags: vStrArr(f, "tags") ?? [],
-    specs: undefined, // 必要なら fsGetObject(f, "specs")
-    offers: [],
-    bestPrice,
-    priceHistory: [],
-    aiSummary: vStr(f, "aiSummary") ?? undefined,
-    views: vNum(f, "views") ?? 0,
-    createdAt: vNum(f, "createdAt") ?? 0,
-    updatedAt: vNum(f, "updatedAt") ?? 0,
-  };
-}
-
-/* ---------- 関連商品（同カテゴリの新着） ---------- */
-async function fetchRelated(
-  siteId: string,
-  categoryId: string,
-  excludeAsin: string,
-  limit = 8
-) {
-  if (!categoryId) return [];
-  const docs = await fsRunQuery({
-    collection: "products",
-    where: [
-      { field: "siteId", value: siteId },
-      { field: "categoryId", value: categoryId },
-    ],
-    orderBy: [{ field: "createdAt", direction: "DESCENDING" }],
-    limit: limit + 2,
-  }).catch(() => [] as any[]);
-
-  const rows: Product[] = docs.map((d: any) => {
-    const f = d.fields;
-    return {
-      asin: docIdFromName(d.name),
-      title: vStr(f, "title") ?? "",
-      brand: vStr(f, "brand") ?? undefined,
-      imageUrl: vStr(f, "imageUrl") ?? undefined,
-      categoryId: vStr(f, "categoryId") ?? "",
-      siteId,
-      tags: [],
-      specs: undefined,
-      offers: [],
-      bestPrice: (() => {
-        const price = vNum(f, "bestPrice.price");
-        const url = vStr(f, "bestPrice.url");
-        const source = vStr(f, "bestPrice.source") as
-          | "amazon"
-          | "rakuten"
-          | undefined;
-        const updatedAt = vNum(f, "bestPrice.updatedAt");
-        return typeof price === "number" &&
-          url &&
-          source &&
-          typeof updatedAt === "number"
-          ? { price, url, source, updatedAt }
-          : undefined;
-      })(),
-      priceHistory: [],
-      aiSummary: undefined,
-      views: vNum(f, "views") ?? 0,
-      createdAt: vNum(f, "createdAt") ?? 0,
-      updatedAt: vNum(f, "updatedAt") ?? 0,
-    } as Product;
-  });
-
-  return rows.filter((p) => p.asin !== excludeAsin).slice(0, limit);
-}
+const outUrl = (asin: string, url?: string, src: string = "detail") =>
+  url
+    ? `/out/${encodeURIComponent(asin)}?to=${encodeURIComponent(
+        url
+      )}&src=${src}`
+    : undefined;
 
 /* ---------- メタデータ（SEO） ---------- */
 export async function generateMetadata({
@@ -185,6 +78,11 @@ export default async function ProductDetailPage({
     product.asin,
     8
   );
+  const relatedBlogs: MiniBlog[] = await fetchBlogsByRelatedAsin(
+    siteId,
+    product.asin,
+    6
+  );
 
   const priceLabel =
     product.bestPrice?.source === "amazon"
@@ -199,6 +97,11 @@ export default async function ProductDetailPage({
       : product.bestPrice?.source === "rakuten"
       ? "楽天"
       : "—";
+
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.chairscope.com"
+  ).replace(/\/$/, "");
+  const canonical = `${siteUrl}/products/${product.asin}`;
 
   return (
     <main className="mx-auto max-w-6xl p-6">
@@ -216,7 +119,42 @@ export default async function ProductDetailPage({
         >
           商品一覧
         </Link>
+        <span className="mx-2">/</span>
+        <span className="opacity-70">{product.title}</span>
       </nav>
+
+      {/* 構造化データ: BreadcrumbList */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            itemListElement: [
+              {
+                "@type": "ListItem",
+                position: 1,
+                name: "ホーム",
+                item: siteUrl + "/",
+              },
+              {
+                "@type": "ListItem",
+                position: 2,
+                name: "商品一覧",
+                item: `${siteUrl}/products?category=${encodeURIComponent(
+                  product.categoryId || "gaming-chair"
+                )}`,
+              },
+              {
+                "@type": "ListItem",
+                position: 3,
+                name: product.title,
+                item: canonical,
+              },
+            ],
+          }),
+        }}
+      />
 
       {/* ヘッダー */}
       <header className="mt-3 mb-4">
@@ -227,7 +165,7 @@ export default async function ProductDetailPage({
       {/* 上段: 画像 + 価格/CTA */}
       <section className="grid gap-6 md:grid-cols-2">
         <div className="rounded-2xl border bg-white p-2">
-          <div className="relative aspect-[4/3] bg-gray-50 rounded-xl overflow-hidden">
+          <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-50">
             {product.imageUrl ? (
               <Image
                 src={product.imageUrl}
@@ -265,9 +203,9 @@ export default async function ProductDetailPage({
           </div>
 
           <div className="mt-4 flex gap-3">
-            {product.bestPrice?.url ? (
+            {outUrl(product.asin, product.bestPrice?.url, "detail") ? (
               <a
-                href={product.bestPrice.url}
+                href={outUrl(product.asin, product.bestPrice?.url, "detail")}
                 target="_blank"
                 rel="noopener noreferrer sponsored"
                 className="rounded-xl border px-5 py-2 font-medium hover:shadow-sm"
@@ -289,6 +227,29 @@ export default async function ProductDetailPage({
             <p className="mt-4 text-sm leading-6 text-gray-700">
               {product.aiSummary}
             </p>
+          )}
+
+          {/* 悩みタグ */}
+          {product.tags && product.tags.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {product.tags.slice(0, 6).map((t) => (
+                <Link
+                  key={t}
+                  href={`/pain/${encodeURIComponent(t)}`}
+                  className="rounded-full border px-3 py-1 text-xs hover:shadow-sm"
+                >
+                  #{t}
+                </Link>
+              ))}
+              <Link
+                href={`/products?category=${encodeURIComponent(
+                  product.categoryId || "gaming-chair"
+                )}&priced=1`}
+                className="rounded-full border px-3 py-1 text-xs opacity-80 hover:shadow-sm"
+              >
+                価格あり一覧へ
+              </Link>
+            </div>
           )}
         </div>
       </section>
@@ -321,6 +282,31 @@ export default async function ProductDetailPage({
         </p>
       </section>
 
+      {/* この商品の解決ガイド */}
+      {relatedBlogs.length > 0 && (
+        <section className="mt-10">
+          <h2 className="mb-3 text-lg font-semibold">この商品の解決ガイド</h2>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {relatedBlogs.map((b) => (
+              <li
+                key={b.slug}
+                className="rounded-xl border p-3 hover:shadow-sm transition"
+              >
+                <Link href={`/blog/${b.slug}`} className="block">
+                  <div className="font-medium line-clamp-2">{b.title}</div>
+                  <div className="mt-1 text-xs text-gray-500">
+                    公開:{" "}
+                    {new Date(
+                      b.publishedAt ?? b.updatedAt ?? 0
+                    ).toLocaleDateString("ja-JP")}
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* 関連商品 */}
       {related.length > 0 && (
         <section className="mt-10">
@@ -337,13 +323,21 @@ export default async function ProductDetailPage({
           </div>
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {related.map((p) => (
-              <ProductCard key={p.asin} p={p} />
+              <li
+                key={p.asin}
+                className="overflow-hidden rounded-2xl border bg-white transition hover:shadow-sm"
+              >
+                <Link href={`/products/${p.asin}`} className="block p-3">
+                  {p.title}
+                </Link>
+              </li>
             ))}
           </ul>
         </section>
       )}
 
-      {/* JSON-LD（SEO） */}
+      {/* JSON-LD: Product（既存＋canonicalリンク） */}
+      <link rel="canonical" href={canonical} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -356,9 +350,7 @@ export default async function ProductDetailPage({
               : undefined,
             image: product.imageUrl,
             sku: product.asin,
-            url: `${
-              process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.chairscope.com"
-            }/products/${product.asin}`,
+            url: canonical,
             offers: product.bestPrice
               ? {
                   "@type": "Offer",
@@ -374,6 +366,32 @@ export default async function ProductDetailPage({
           }),
         }}
       />
+
+      {/* mobile sticky CTA */}
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/70 p-3 md:hidden">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+          <div className="text-lg font-semibold">
+            {typeof product.bestPrice?.price === "number"
+              ? jpy(product.bestPrice.price)
+              : "価格取得中"}
+            <span className="ml-2 text-xs text-gray-600">
+              {timeago(product.bestPrice?.updatedAt ?? product.updatedAt)}
+            </span>
+          </div>
+          {outUrl(product.asin, product.bestPrice?.url, "sticky") ? (
+            <a
+              href={outUrl(product.asin, product.bestPrice?.url, "sticky")}
+              target="_blank"
+              rel="noopener noreferrer sponsored"
+              className="rounded-xl border px-4 py-2 font-medium"
+            >
+              {priceLabel}
+            </a>
+          ) : (
+            <span className="text-sm text-gray-500">リンク準備中</span>
+          )}
+        </div>
+      </div>
     </main>
   );
 }

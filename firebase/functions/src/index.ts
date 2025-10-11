@@ -1,23 +1,20 @@
 // firebase/functions/src/index.ts
-// ✅ 本番(GCF)では dotenv を読み込まない。ローカル(エミュ/tsx)のみ読み込む
 (async () => {
   try {
     if (process.env.FUNCTIONS_EMULATOR || !process.env.K_SERVICE) {
       await import("dotenv/config");
     }
-  } catch {
-    // 本番では dotenv が無くてOK
-  }
+  } catch {}
 })();
 
 import * as functions from "firebase-functions";
 import { getApps, initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+// ここでは getFirestore は使わず、共有の db を使う
+import { db } from "./lib/db.js";
 
 if (getApps().length === 0) initializeApp();
-getFirestore().settings({ ignoreUndefinedProperties: true });
+// ⚠ settings() は呼ばない！ ignoreUndefined は書き込み前のサニタイズで対応する
 
-// ⚠️ 戻り値を返さない（void）形にする
 export const health = functions
   .region("asia-northeast1")
   .https.onRequest((_req, res) => {
@@ -33,14 +30,35 @@ export {
   scheduledDiscoverFromSearch,
   runDiscoverNow,
 } from "./jobs/discoverProducts.js";
-
 export {
   scheduledProcessAsinQueue,
   runProcessAsinQueue,
 } from "./jobs/processAsinQueue.js";
-
 export { scheduledBlogMorning } from "./jobs/scheduledBlogMorning.js";
 export { scheduledBlogNoon } from "./jobs/scheduledBlogNoon.js";
 export { scheduledRewriteLowScoreBlogs } from "./jobs/scheduledRewriteLowScoreBlogs.js";
-
 export { runBackfillBlogSiteId } from "./scripts/backfillBlogSiteId.js";
+export { scheduledWeeklyPillar } from "./jobs/scheduledWeeklyPillar.js";
+
+// ★ 追加: 鮮度ベース再投入 & DLQリトライ
+import { enqueueStaleBySite } from "./scripts/enqueueStaleProducts.js";
+import { requeueDeadLetters } from "./scripts/retryDeadLetter.js";
+
+const REGION = "asia-northeast1";
+
+export const scheduledEnqueueStale = functions
+  .region(REGION)
+  .pubsub.schedule("every 60 minutes")
+  .timeZone("Asia/Tokyo")
+  .onRun(async () => {
+    const sites = await db.collection("sites").get();
+    for (const s of sites.docs) await enqueueStaleBySite(s.id, 800);
+  });
+
+export const scheduledRetryDeadLetters = functions
+  .region(REGION)
+  .pubsub.schedule("every 24 hours")
+  .timeZone("Asia/Tokyo")
+  .onRun(async () => {
+    await requeueDeadLetters(1000);
+  });

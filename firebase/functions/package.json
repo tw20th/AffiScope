@@ -45,7 +45,8 @@
     "logs:rewrite": "gcloud logging read 'resource.type=\"cloud_function\" AND resource.labels.function_name=\"scheduledRewriteLowScoreBlogs\" AND resource.labels.region=\"asia-northeast1\"' --project=affiscope --limit=50 --format='value(textPayload)'",
     "blogs:migrate:rakuten": "tsx -P tsconfig.scripts.json src/scripts/blog/migrateFromRakuten.ts",
     "blogs:normalize": "tsx -P tsconfig.scripts.json src/scripts/blog/normalizeForAffiScope.ts",
-    "blogs:fix:siteid": "tsx -P tsconfig.scripts.json src/scripts/blog/fixSiteIdForPowerbanks.ts"
+    "blogs:fix:siteid": "tsx -P tsconfig.scripts.json src/scripts/blog/fixSiteIdForPowerbanks.ts",
+    "build:sites": "ts-node firebase/functions/src/scripts/buildSiteCatalog.ts"
   },
   "dependencies": {
     "@affiscope/shared-schemas": "file:./shared-schemas",

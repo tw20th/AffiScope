@@ -4,18 +4,18 @@ import { defineSecret } from "firebase-functions/params";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { fetchAmazonOffers } from "../fetchers/amazon/paapi.js";
+import { getSiteConfig } from "../lib/siteConfig.js";
+import { isStale, computeFreshFor, pickPolicy } from "../lib/staleness.js";
+import { shouldBoostHot } from "../lib/hotBoost.js";
 
 const REGION = "asia-northeast1";
-
 const AMAZON_ACCESS_KEY = defineSecret("AMAZON_ACCESS_KEY");
 const AMAZON_SECRET_KEY = defineSecret("AMAZON_SECRET_KEY");
 const AMAZON_PARTNER_TAG = defineSecret("AMAZON_PARTNER_TAG");
 
-// ---- Admin init ----
 if (getApps().length === 0) initializeApp();
 const db = getFirestore();
 
-// ---- Local types（保存形式に合わせた最小限）----
 type Source = "amazon" | "rakuten";
 type PriceHistory = { ts: number; source: Source; price: number };
 type Offer = { source: Source; price: number; url: string; lastSeenAt: number };
@@ -30,19 +30,20 @@ type ProductDoc = {
   asin: string;
   siteId: string;
   title?: string;
-  brand?: string;
-  imageUrl?: string;
+  specs?: { features?: string[] };
+  tags?: string[];
   offers?: Offer[];
   priceHistory?: PriceHistory[];
   bestPrice?: BestPrice;
+  views?: number;
+  pinned?: boolean;
   updatedAt?: number;
+  freshUntil?: number;
 };
 
-// ---- 共通ユーティリティ ----
 function isNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
-
 function calcBestPrice(offers: Offer[]): BestPrice | undefined {
   if (!offers.length) return undefined;
   const best = offers.reduce(
@@ -57,36 +58,43 @@ function calcBestPrice(offers: Offer[]): BestPrice | undefined {
   };
 }
 
-// ------------------------------------------------------------------
-// コア処理：指定サイトの product 群の価格を更新
-// ------------------------------------------------------------------
 export async function updatePricesForSite(siteId: string, limit = 50) {
-  const snap = await db
+  const now = Date.now();
+
+  const staleSnap = await db
     .collection("products")
     .where("siteId", "==", siteId)
+    .orderBy("freshUntil", "asc")
     .orderBy("updatedAt", "asc")
     .limit(limit)
     .get();
 
   const docs: QueryDocumentSnapshot[] = [];
   const asins: string[] = [];
-  snap.forEach((d) => {
+  staleSnap.forEach((d) => {
     const asin = d.get("asin");
-    if (typeof asin === "string" && asin.length === 10) {
+    const freshUntil = d.get("freshUntil") as number | undefined;
+    if (
+      typeof asin === "string" &&
+      asin.length === 10 &&
+      isStale(freshUntil, now)
+    ) {
       docs.push(d);
       asins.push(asin);
     }
   });
 
   if (asins.length === 0) {
-    console.log(`[updatePrices] site=${siteId} targets=0`);
+    console.log(`[updatePrices] site=${siteId} staleTargets=0`);
     return { siteId, targets: 0, updated: 0 };
   }
 
-  // まとめて取得（PA-API）
-  const offersMap = await fetchAmazonOffers(asins);
+  const siteCfg = await getSiteConfig(siteId);
+  const partnerTag =
+    siteCfg?.affiliate?.amazon?.partnerTag || process.env.AMAZON_PARTNER_TAG;
 
-  const now = Date.now();
+  const offersMap = await fetchAmazonOffers(asins, { partnerTag });
+
   let updated = 0;
   const batch = db.batch();
 
@@ -94,44 +102,53 @@ export async function updatePricesForSite(siteId: string, limit = 50) {
     const d = docs[i];
     const data = (d.data() as ProductDoc) ?? {};
     const asin = data.asin;
-
     const hit = offersMap[asin];
-    if (!hit) {
-      console.warn("[updatePrices] no offer from PA-API", { siteId, asin });
-      continue;
-    }
+    const now2 = Date.now();
 
     const currentOffers: Offer[] = Array.isArray(data.offers)
       ? data.offers
       : [];
+    const history: PriceHistory[] = Array.isArray(data.priceHistory)
+      ? data.priceHistory
+      : [];
 
-    // 価格があるときだけ Offer を追加/更新
-    if (isNumber(hit.price)) {
+    if (hit && isNumber(hit.price)) {
       const url = hit.url ?? `https://www.amazon.co.jp/dp/${asin}`;
       const next: Offer = {
         source: "amazon",
         price: hit.price,
         url,
-        lastSeenAt: now,
+        lastSeenAt: now2,
       };
 
       const idx = currentOffers.findIndex((o) => o.source === "amazon");
-      if (idx >= 0) {
-        currentOffers[idx] = { ...currentOffers[idx], ...next };
-      } else {
-        currentOffers.push(next);
-      }
+      if (idx >= 0) currentOffers[idx] = { ...currentOffers[idx], ...next };
+      else currentOffers.push(next);
 
-      // priceHistory（末尾価格と違うときだけ追加）
-      const history: PriceHistory[] = Array.isArray(data.priceHistory)
-        ? data.priceHistory
-        : [];
       const last = history[history.length - 1];
       if (!last || last.price !== next.price) {
-        history.push({ ts: now, source: "amazon", price: next.price });
+        history.push({ ts: now2, source: "amazon", price: next.price });
       }
 
       const best = calcBestPrice(currentOffers);
+
+      // hot再評価（discovery.hotBoostRules を適用）
+      const text = [data.title, ...(data.specs?.features || [])]
+        .filter(Boolean)
+        .join(" / ");
+      const boost = shouldBoostHot({
+        asin,
+        seeds: siteCfg?.seeds?.asins,
+        price: hit.price,
+        futureTags: data.tags || [],
+        textForMatch: text,
+        rules: siteCfg?.discovery?.hotBoostRules,
+      });
+
+      const policy = boost
+        ? "hot"
+        : pickPolicy(Number(data.views || 0), !!data.pinned);
+      const freshUntilNext = computeFreshFor(policy, now2);
 
       batch.set(
         d.ref,
@@ -139,33 +156,21 @@ export async function updatePricesForSite(siteId: string, limit = 50) {
           offers: currentOffers,
           priceHistory: history,
           bestPrice: best,
-          updatedAt: now,
+          updatedAt: now2,
+          freshUntil: freshUntilNext,
         },
         { merge: true }
       );
       updated++;
     } else {
-      // 価格なし：既存の amazon オファーがあれば URL/lastSeenAt だけ更新（URLが来た時のみ上書き）
-      const idx = currentOffers.findIndex((o) => o.source === "amazon");
-      if (idx >= 0) {
-        currentOffers[idx] = {
-          ...currentOffers[idx],
-          ...(hit.url ? { url: hit.url } : {}),
-          lastSeenAt: now,
-        };
-        batch.set(
-          d.ref,
-          {
-            offers: currentOffers,
-            updatedAt: now,
-          },
-          { merge: true }
-        );
-        updated++;
-      } else {
-        // 何もしない（Offer.price は number 必須なので新規は作らない）
-        console.log("[updatePrices] skip add (no price)", { siteId, asin });
-      }
+      // 取得失敗・価格なし：鮮度だけ押し直し
+      const policy = pickPolicy(Number(data.views || 0), !!data.pinned);
+      const freshUntilNext = computeFreshFor(policy, now2);
+      batch.set(
+        d.ref,
+        { updatedAt: now2, freshUntil: freshUntilNext },
+        { merge: true }
+      );
     }
   }
 
@@ -176,9 +181,6 @@ export async function updatePricesForSite(siteId: string, limit = 50) {
   return { siteId, targets: docs.length, updated };
 }
 
-// ------------------------------------------------------------------
-// スケジュール実行
-// ------------------------------------------------------------------
 export const scheduledUpdatePrices = functions
   .runWith({
     secrets: [AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AMAZON_PARTNER_TAG],
@@ -201,9 +203,6 @@ export const scheduledUpdatePrices = functions
     }
   });
 
-// ------------------------------------------------------------------
-// 手動実行（siteId / limit）
-// ------------------------------------------------------------------
 export const runUpdatePrices = functions
   .runWith({
     secrets: [AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AMAZON_PARTNER_TAG],
@@ -214,10 +213,10 @@ export const runUpdatePrices = functions
   .https.onRequest(async (req, res) => {
     try {
       const siteId = String(req.query.siteId || "").trim();
-      if (!siteId) {
-        res.status(400).json({ ok: false, error: "siteId query is required" });
-        return;
-      }
+      if (!siteId)
+        return void res
+          .status(400)
+          .json({ ok: false, error: "siteId query is required" });
       const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
       const result = await updatePricesForSite(siteId, limit);
       res.json({ ok: true, ...result });

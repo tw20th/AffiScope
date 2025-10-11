@@ -1,8 +1,9 @@
+// firebase/functions/src/scripts/bootstrapSite.ts
 /**
  * サイト初期化ワンショット:
  * 1) sites/<siteId>.json を Firestore へ同期
  * 2) seeds の ASIN をキュー投入 → 取得(upsert)
- * 3) discovery.searchKeywords から検索→ASIN投入 → 取得(upsert)  ※軽めに1ページ
+ * 3) discovery.searchKeywords から検索→ASIN投入 → 取得(upsert)  ※ページ/件数をサイト設定に準拠
  * 4) tagRules を読んで tags を自動付与
  *
  * 使い方:
@@ -17,14 +18,10 @@ try {
 
 import { readFileSync } from "fs";
 import { resolve, join } from "path";
-import { getApps, initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { db } from "../lib/db.js";
 
 import { enqueueAsins, discoverForSite } from "../jobs/discoverProducts.js";
 import { searchAmazonItems } from "../fetchers/amazon/search.js";
-
-if (getApps().length === 0) initializeApp();
-const db = getFirestore();
 
 // ---------- utils ----------
 type Condition =
@@ -102,6 +99,27 @@ function mergeTags(existing: unknown, add: string[]): string[] {
   return Array.from(set);
 }
 
+function kwIncludesAny(text: string, kws: string[]): boolean {
+  const t = text.toLowerCase();
+  return kws.some((k) => t.includes(k.toLowerCase()));
+}
+
+function shouldKeepByProductRules(
+  title: string | undefined,
+  rules: any
+): boolean {
+  if (!rules) return true;
+  const inc: string[] = Array.isArray(rules.includeKeywords)
+    ? rules.includeKeywords
+    : [];
+  const exc: string[] = Array.isArray(rules.excludeKeywords)
+    ? rules.excludeKeywords
+    : [];
+  if (exc.length && title && kwIncludesAny(title, exc)) return false;
+  if (inc.length && title && !kwIncludesAny(title, inc)) return false;
+  return true;
+}
+
 // ---------- main ----------
 async function main() {
   const args = process.argv.slice(2);
@@ -153,36 +171,69 @@ async function main() {
   });
   console.log("[bootstrap] discover(seeds/queue) done");
 
-  // 3) keyword 検索 → enqueue → discover（軽め）
+  // 3) keyword 検索 → enqueue → discover（サイト設定を反映）
   if (!skipSearch) {
     const kws = (site.discovery?.searchKeywords as string[]) || [];
     const sIndex = site.discovery?.searchIndex || "OfficeProducts";
     const minP = site.discovery?.minPrice ?? 0;
     const maxP = site.discovery?.maxPrice ?? Number.MAX_SAFE_INTEGER;
+    const maxPerRun =
+      typeof site.discovery?.maxPerRun === "number" &&
+      site.discovery?.maxPerRun > 0
+        ? site.discovery.maxPerRun
+        : 50;
+    const maxPage =
+      typeof site.discovery?.maxSearchItemPage === "number" &&
+      site.discovery?.maxSearchItemPage > 0
+        ? site.discovery.maxSearchItemPage
+        : 1;
+    const randomize = !!site.discovery?.randomizePage;
 
-    let enq = 0;
+    const includeExcludeRules = site.productRules || null;
+
+    const enqueued = new Set<string>(); // ← 総数は size で管理
+
     for (const kw of kws) {
-      const items = await searchAmazonItems(kw, 10, 1, {
-        sortBy: "Featured",
-        searchIndex: sIndex,
-      });
-      const asins = Array.from(
-        new Set(
-          items
-            .filter((i) => (i.price ?? 0) >= minP && (i.price ?? 0) <= maxP)
-            .map((i) => i.asin)
-        )
-      );
-      await enqueueAsins(siteId, asins, {
-        cooldownDays: site.discovery?.cooldownDays,
-      });
-      enq += asins.length;
+      if (enqueued.size >= maxPerRun) break;
+
+      // ページ選択
+      const pagesToTry = randomize
+        ? [Math.floor(Math.random() * maxPage) + 1]
+        : Array.from({ length: maxPage }, (_, i) => i + 1);
+
+      for (const page of pagesToTry) {
+        if (enqueued.size >= maxPerRun) break;
+
+        const items = await searchAmazonItems(kw, 10, page, {
+          sortBy: "Featured",
+          searchIndex: sIndex,
+        });
+
+        const filtered = items
+          .filter((i) => (i.price ?? 0) >= minP && (i.price ?? 0) <= maxP)
+          .filter((i) =>
+            shouldKeepByProductRules(i.title, includeExcludeRules)
+          );
+
+        for (const it of filtered) {
+          if (enqueued.size >= maxPerRun) break;
+          if (!it.asin) continue;
+          enqueued.add(it.asin);
+        }
+      }
     }
+
+    const asins = Array.from(enqueued);
+    await enqueueAsins(siteId, asins, {
+      cooldownDays: site.discovery?.cooldownDays,
+    });
+
     await discoverForSite(site, limitArg, {
       relaxed: !!site.discovery?.relaxedOnFirstImport,
     });
+
     console.log(
-      `[bootstrap] search+discover done (enqueued by search: ${enq})`
+      `[bootstrap] search+discover done (enqueued by search: ${asins.length} / maxPerRun=${maxPerRun}, pages<=${maxPage}, randomize=${randomize})`
     );
   }
 
@@ -216,6 +267,7 @@ async function main() {
       Array.isArray(p.tags) &&
       p.tags.length === merged.length &&
       p.tags.every((t: any, i: number) => t === merged[i]);
+
     if (!same) {
       batch.update(d.ref, { tags: merged, updatedAt: Date.now() });
       updated++;

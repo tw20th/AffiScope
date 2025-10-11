@@ -6,11 +6,12 @@ import { retagBySiteRules } from "../lib/tagging.js";
 import { buildAiSummary } from "../lib/summary.js";
 import { getSiteConfig } from "../lib/siteConfig.js";
 import { normalizeProductFromOffer } from "../lib/normalize.js";
+import { computeFreshFor, pickPolicy } from "../lib/staleness.js";
 
 type QueueDoc = {
   siteId: string;
   asin: string;
-  status: "queued" | "running" | "done" | "error";
+  status: "queued" | "processing" | "done" | "error";
   priority?: number;
   attempts?: number;
   createdAt?: number;
@@ -22,7 +23,6 @@ const REGION = "asia-northeast1";
 const TZ = "Asia/Tokyo";
 const BATCH_SIZE = +(process.env.QUEUE_BATCH_SIZE || 20);
 const MAX_ATTEMPTS = +(process.env.QUEUE_MAX_ATTEMPTS || 3);
-
 const now = () => Date.now();
 
 function buildAffiliateUrl(asin: string, partnerTag?: string) {
@@ -32,9 +32,9 @@ function buildAffiliateUrl(asin: string, partnerTag?: string) {
 }
 
 async function pickQueueDocs(db: FirebaseFirestore.Firestore) {
-  // status=queued を優先取得（firestore.indexes.json に対応 index を追加済み想定）
+  // トップコレクションを直接見る（性能・コスト面で有利）
   const snap = await db
-    .collectionGroup("asinQueue")
+    .collection("asinQueue")
     .where("status", "==", "queued")
     .orderBy("siteId", "asc")
     .orderBy("priority", "asc")
@@ -60,11 +60,11 @@ async function lockDocs(
       const data = d.data();
       if (data.status !== "queued") continue;
       tx.update(ref, {
-        status: "running",
+        status: "processing",
         attempts: (data.attempts || 0) + 1,
         updatedAt: now(),
       } as Partial<QueueDoc>);
-      locked.push({ ref, data: { ...data, status: "running" } });
+      locked.push({ ref, data: { ...data, status: "processing" } });
     }
   });
   return locked;
@@ -94,8 +94,8 @@ export async function processOnce(): Promise<{
     grouped.set(it.data.siteId, g);
   }
 
-  let ok = 0;
-  let ng = 0;
+  let ok = 0,
+    ng = 0;
 
   for (const [siteId, group] of grouped) {
     const site = await getSiteConfig(siteId);
@@ -125,7 +125,6 @@ export async function processOnce(): Promise<{
       try {
         const offer = offers[q.asin] || null;
 
-        // ベース
         const baseDoc: any = {
           siteId,
           asin: q.asin,
@@ -135,26 +134,27 @@ export async function processOnce(): Promise<{
           updatedAt: now(),
         };
 
-        // offer → product 正規化
         if (offer)
           Object.assign(baseDoc, normalizeProductFromOffer(q.asin, offer));
 
-        // タグ
         const tags = await retagBySiteRules(siteId, baseDoc);
         if (tags?.length) baseDoc.tags = tags;
 
-        // 要約
         baseDoc.aiSummary = buildAiSummary({
           title: baseDoc.title,
           tags: baseDoc.tags || [],
           price: baseDoc.bestPrice?.price ?? baseDoc.price ?? undefined,
         });
 
-        // upsert
+        // 次回鮮度（露出ベース）
+        const views = Number(baseDoc.views || 0);
+        const pinned = !!baseDoc.pinned;
+        const policy = pickPolicy(views, pinned);
+        baseDoc.freshUntil = computeFreshFor(policy, Date.now());
+
         const prodRef = db.collection("products").doc(`${siteId}_${q.asin}`);
         batch.set(prodRef, baseDoc, { merge: true });
 
-        // queue -> done
         batch.update(ref, {
           status: "done",
           updatedAt: now(),

@@ -1,30 +1,33 @@
-import { headers, cookies } from "next/headers";
+// apps/web/lib/site-server.ts
+import { headers } from "next/headers";
+import { domainToSiteId, siteCatalog, type SiteEntry } from "./site-catalog";
 
-export const COOKIE_SITE_ID = "siteId";
-
-// 既定値を chairscope に（このプロジェクト前提）
-export const DEFAULT_SITE_ID = process.env.NEXT_PUBLIC_SITE_ID ?? "chairscope";
+function normalizeHost(raw: string): string {
+  // ポート除去 + 小文字化
+  const lower = raw.toLowerCase();
+  return lower.replace(/:\d+$/, "");
+}
 
 export function getServerSiteId(): string {
-  // 1) 明示ENVがあれば最優先
-  if (process.env.NEXT_PUBLIC_SITE_ID) return process.env.NEXT_PUBLIC_SITE_ID;
+  const h = headers();
+  const hostRaw = h.get("x-forwarded-host") || h.get("host") || "";
+  const host = normalizeHost(hostRaw);
 
-  try {
-    const h = headers();
+  // 1) 完全一致 / 揺れを domainToSiteId が吸収
+  const byMap = domainToSiteId[host];
+  if (byMap) return byMap;
 
-    // 2) 逆プロキシ等からのヘッダ
-    const fromHeader = h.get("x-site-id");
-    if (fromHeader) return fromHeader;
+  // 2) フォールバック
+  return (
+    process.env.DEFAULT_SITE_ID || siteCatalog.sites[0]?.siteId || "chairscope"
+  );
+}
 
-    // 3) ホスト名で自動判定（保険）
-    const host = h.get("host") ?? "";
-    if (host.includes("chairscope")) return "chairscope";
-    if (host.includes("affiscope")) return "affiscope";
-
-    // 4) クッキー（必要なら）
-    const c = cookies();
-    return c.get(COOKIE_SITE_ID)?.value || DEFAULT_SITE_ID;
-  } catch {
-    return DEFAULT_SITE_ID;
+export function getSiteEntry(): SiteEntry {
+  const siteId = getServerSiteId();
+  const entry = siteCatalog.sites.find((s: SiteEntry) => s.siteId === siteId);
+  if (!entry) {
+    throw new Error(`Unknown siteId: ${siteId}`);
   }
+  return entry;
 }

@@ -1,5 +1,19 @@
+// firebase/functions/src/fetchers/amazon/search.ts
 import paapi5sdk from "paapi5-nodejs-sdk";
 import { withRetry } from "../../lib/retry.js";
+
+type Marketplace = "JP" | "US" | "UK" | "DE" | "FR" | "CA" | "IT" | "ES" | "IN";
+const ENDPOINTS: Record<Marketplace, { host: string; region: string }> = {
+  JP: { host: "webservices.amazon.co.jp", region: "us-west-2" },
+  US: { host: "webservices.amazon.com", region: "us-east-1" },
+  UK: { host: "webservices.amazon.co.uk", region: "eu-west-1" },
+  DE: { host: "webservices.amazon.de", region: "eu-west-1" },
+  FR: { host: "webservices.amazon.fr", region: "eu-west-1" },
+  IT: { host: "webservices.amazon.it", region: "eu-west-1" },
+  ES: { host: "webservices.amazon.es", region: "eu-west-1" },
+  CA: { host: "webservices.amazon.ca", region: "us-east-1" },
+  IN: { host: "webservices.amazon.in", region: "eu-west-1" },
+};
 
 interface PaapiApi {
   searchItems: (
@@ -34,7 +48,6 @@ function get<T>(obj: unknown, path: string[]): T | undefined {
   return cur as T;
 }
 
-// ✅ SearchItems 用の正しい Resources（DetailPageURL は入れない）
 const SEARCH_RESOURCES = [
   "ItemInfo.Title",
   "ItemInfo.ByLineInfo",
@@ -42,33 +55,50 @@ const SEARCH_RESOURCES = [
   "Offers.Listings.Price",
 ] as const;
 
-export async function searchAmazonItems(
-  keyword: string,
-  limit = 10,
-  page = 1,
-  opts?: { sortBy?: string; searchIndex?: string }
-): Promise<Item[]> {
+type SearchOpts = {
+  sortBy?: string;
+  searchIndex?: string;
+  partnerTag?: string;
+  marketplace?: Marketplace;
+};
+
+function createClient(opts?: SearchOpts) {
   const ACCESS_KEY = process.env.AMAZON_ACCESS_KEY;
   const SECRET_KEY = process.env.AMAZON_SECRET_KEY;
-  const PARTNER_TAG = process.env.AMAZON_PARTNER_TAG;
-  if (!ACCESS_KEY || !SECRET_KEY || !PARTNER_TAG)
+  const FALLBACK_PARTNER = process.env.AMAZON_PARTNER_TAG;
+
+  const partnerTag = opts?.partnerTag || FALLBACK_PARTNER;
+  const marketplace: Marketplace = opts?.marketplace || "JP";
+  if (!ACCESS_KEY || !SECRET_KEY || !partnerTag)
     throw new Error("Missing PA-API creds.");
 
-  // 署名干渉を避ける
   delete (process.env as any).AWS_REGION;
   delete (process.env as any).AWS_DEFAULT_REGION;
   delete (process.env as any).AMAZON_REGION;
 
+  const ep = ENDPOINTS[marketplace];
   const Paapi = paapi5sdk as unknown as PaapiModule;
   const client = Paapi.ApiClient.instance;
   client.accessKey = ACCESS_KEY;
   client.secretKey = SECRET_KEY;
-  client.host = "webservices.amazon.co.jp";
-  client.region = "us-west-2";
+  client.host = ep.host;
+  client.region = ep.region;
+
+  return { Paapi, partnerTag };
+}
+
+/** 検索API（サイト別 partnerTag / marketplace を利用） */
+export async function searchAmazonItems(
+  keyword: string,
+  limit = 10,
+  page = 1,
+  opts?: SearchOpts
+): Promise<Item[]> {
+  const { Paapi, partnerTag } = createClient(opts);
 
   const api = new Paapi.DefaultApi();
   const req = new Paapi.SearchItemsRequest();
-  req["PartnerTag"] = PARTNER_TAG;
+  req["PartnerTag"] = partnerTag;
   req["PartnerType"] = "Associates";
   req["Keywords"] = keyword;
   req["ItemCount"] = Math.min(Math.max(limit, 1), 10);
@@ -108,7 +138,6 @@ export async function searchAmazonItems(
       ]),
       imageUrl: get<string>(it, ["Images", "Primary", "Large", "URL"]),
       price: get<number>(it, ["Offers", "Listings", "0", "Price", "Amount"]),
-      // ← リソース指定不要でも返ってくる
       url: (it["DetailPageURL"] as string | undefined) ?? undefined,
     });
   }

@@ -2,22 +2,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getServerSiteId } from "@/lib/site-server";
-import { fsGet, vNum, vStr } from "@/lib/firestore-rest";
+import { fetchBlogBySlug, fetchBestPrice } from "@/lib/queries";
 
-export const revalidate = 3600; // 1時間
+export const revalidate = 3600;
 export const dynamic = "force-dynamic";
-
-type Blog = {
-  slug: string;
-  title: string;
-  content: string;
-  imageUrl?: string;
-  summary?: string;
-  siteId: string;
-  updatedAt?: number;
-  publishedAt?: number;
-  relatedAsin?: string | null;
-};
 
 type BestPrice = {
   price: number;
@@ -48,7 +36,6 @@ function makeSummaryFromContent(md: string, max = 120) {
   return plain.length > max ? plain.slice(0, max) + "…" : plain;
 }
 
-// 依存なしの軽量 Markdown -> HTML（必要最小限）
 function mdToHtml(md: string) {
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -75,7 +62,6 @@ function mdToHtml(md: string) {
 
   for (const raw of lines) {
     const line = raw.trimEnd();
-
     const m = line.match(/^(#{1,6})\s+(.*)$/);
     if (m) {
       if (ulOpen) {
@@ -88,7 +74,6 @@ function mdToHtml(md: string) {
       out.push(`<h${level} id="${id}">${text}</h${level}>`);
       continue;
     }
-
     if (/^[-*]\s+/.test(line)) {
       const item = line.replace(/^[-*]\s+/, "");
       if (!ulOpen) {
@@ -101,12 +86,10 @@ function mdToHtml(md: string) {
       out.push("</ul>");
       ulOpen = false;
     }
-
     if (line === "") {
       out.push("");
       continue;
     }
-
     let html = line
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>")
@@ -115,11 +98,9 @@ function mdToHtml(md: string) {
         /\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g,
         '<a href="$2" target="_blank" rel="noopener nofollow sponsored" class="underline">$1</a>'
       );
-
     out.push(`<p>${html}</p>`);
   }
   if (ulOpen) out.push("</ul>");
-
   let html = out.join("\n");
   html = html.replace(
     /\[\[\[FENCE_(\d+)]]]/g,
@@ -128,7 +109,6 @@ function mdToHtml(md: string) {
   return html;
 }
 
-// 目次抽出（## と ###）
 function extractToc(md: string) {
   const lines = md.split(/\r?\n/);
   const items: { level: 2 | 3; text: string; id: string }[] = [];
@@ -140,56 +120,22 @@ function extractToc(md: string) {
       .replace(/\s+/g, "-");
   for (const l of lines) {
     const m = l.match(/^(#{2,3})\s+(.*)$/);
-    if (m) {
-      const level = m[1].length === 2 ? 2 : 3;
-      const text = m[2].trim();
-      items.push({ level, text, id: slugify(text) });
-    }
+    if (m)
+      items.push({
+        level: m[1].length === 2 ? 2 : 3,
+        text: m[2].trim(),
+        id: slugify(m[2].trim()),
+      });
   }
   return items;
 }
 
-// ---- data access ----
-async function fetchBlog(slug: string): Promise<Blog | null> {
-  const doc = await fsGet({ path: `blogs/${slug}` });
-  if (!doc) return null;
-  const f = doc.fields;
-  const content = vStr(f, "content") ?? "";
-  const summary = vStr(f, "summary") || makeSummaryFromContent(content);
-  return {
-    slug,
-    title: vStr(f, "title") ?? "(no title)",
-    content,
-    imageUrl: vStr(f, "imageUrl") ?? undefined,
-    summary,
-    siteId: vStr(f, "siteId") ?? "",
-    updatedAt: vNum(f, "updatedAt") ?? undefined,
-    publishedAt: vNum(f, "publishedAt") ?? undefined,
-    relatedAsin: vStr(f, "relatedAsin") ?? null,
-  };
-}
-
-async function fetchBestPrice(asin: string): Promise<BestPrice | null> {
-  const doc = await fsGet({ path: `products/${asin}` }).catch(() => null);
-  const f = (doc as any)?.fields;
-  if (!f) return null;
-  const price = vNum(f, "bestPrice.price");
-  const url = vStr(f, "bestPrice.url");
-  const source = vStr(f, "bestPrice.source") as
-    | "amazon"
-    | "rakuten"
-    | undefined;
-  const updatedAt = vNum(f, "bestPrice.updatedAt");
-  if (
-    typeof price === "number" &&
-    url &&
-    source &&
-    typeof updatedAt === "number"
-  ) {
-    return { price, url, source, updatedAt };
-  }
-  return null;
-}
+const outUrl = (asin: string, url?: string, src = "blog") =>
+  url
+    ? `/out/${encodeURIComponent(asin)}?to=${encodeURIComponent(
+        url
+      )}&src=${src}`
+    : undefined;
 
 // ---- SEO ----
 export async function generateMetadata({
@@ -197,7 +143,7 @@ export async function generateMetadata({
 }: {
   params: { slug: string };
 }) {
-  const blog = await fetchBlog(params.slug).catch(() => null);
+  const blog = await fetchBlogBySlug(params.slug).catch(() => null);
   if (!blog) return { title: "記事が見つかりません" };
   const title = `${blog.title}｜値下げ情報・レビュー`;
   const description = blog.summary ?? makeSummaryFromContent(blog.content);
@@ -212,19 +158,12 @@ export default async function BlogDetail({
 }) {
   const siteId = getServerSiteId();
 
-  let blog: Blog | null = null;
-  try {
-    blog = await fetchBlog(params.slug);
-  } catch (e: any) {
-    const msg = String(e?.message ?? "");
-    if (msg.includes("fsGet failed: 403")) notFound();
-    throw e;
-  }
+  const blog = await fetchBlogBySlug(params.slug);
   if (!blog || blog.siteId !== siteId) notFound();
 
   const toc = extractToc(blog.content);
   const html = mdToHtml(blog.content);
-  const bestPrice = blog.relatedAsin
+  const bestPrice: BestPrice | null = blog.relatedAsin
     ? await fetchBestPrice(blog.relatedAsin)
     : null;
 
@@ -244,7 +183,40 @@ export default async function BlogDetail({
         <Link href="/blog" className="underline">
           ブログ
         </Link>
+        <span className="mx-2">/</span>
+        <span className="opacity-70">{blog.title}</span>
       </nav>
+
+      {/* 構造化データ: BreadcrumbList */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            itemListElement: [
+              {
+                "@type": "ListItem",
+                position: 1,
+                name: "ホーム",
+                item: siteUrl + "/",
+              },
+              {
+                "@type": "ListItem",
+                position: 2,
+                name: "ブログ",
+                item: `${siteUrl}/blog`,
+              },
+              {
+                "@type": "ListItem",
+                position: 3,
+                name: blog.title,
+                item: canonical,
+              },
+            ],
+          }),
+        }}
+      />
 
       <header className="mt-3">
         <h1 className="text-2xl font-bold">{blog.title}</h1>
@@ -265,7 +237,7 @@ export default async function BlogDetail({
       </header>
 
       {/* 関連商品CTA（あれば） */}
-      {bestPrice && (
+      {bestPrice && blog.relatedAsin && (
         <div className="mt-4 rounded-xl border bg-white p-4 text-sm">
           <div className="mb-1">
             関連商品の最安値:{" "}
@@ -279,7 +251,7 @@ export default async function BlogDetail({
             {fmt(bestPrice.updatedAt)}）
           </div>
           <a
-            href={bestPrice.url}
+            href={outUrl(blog.relatedAsin, bestPrice.url, "blog")}
             target="_blank"
             rel="noopener noreferrer sponsored"
             className="inline-block rounded-lg border px-4 py-2 font-medium hover:shadow-sm"
@@ -309,6 +281,36 @@ export default async function BlogDetail({
       <article className="prose prose-neutral mt-6 max-w-none">
         <div dangerouslySetInnerHTML={{ __html: html }} />
       </article>
+
+      {/* 次の一歩 */}
+      <div className="mt-8 rounded-2xl border bg-white p-5">
+        <div className="font-semibold">次の一歩</div>
+        <ul className="mt-2 list-disc pl-6 text-sm">
+          <li>
+            <Link href="/products" className="underline">
+              条件で商品をしぼる
+            </Link>
+          </li>
+          {bestPrice && blog.relatedAsin && (
+            <li>
+              <a
+                href={outUrl(blog.relatedAsin, bestPrice.url, "blog_bottom")}
+                target="_blank"
+                rel="noopener noreferrer sponsored"
+                className="underline"
+              >
+                公式の価格ページを開く（
+                {bestPrice.source === "amazon" ? "Amazon" : "楽天"}）
+              </a>
+            </li>
+          )}
+          <li>
+            <Link href="/blog" className="underline">
+              他の値下げ・比較記事を見る
+            </Link>
+          </li>
+        </ul>
+      </div>
 
       {/* JSON-LD */}
       <link rel="canonical" href={canonical} />

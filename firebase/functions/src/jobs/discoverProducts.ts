@@ -1,8 +1,8 @@
 // firebase/functions/src/jobs/discoverProducts.ts
 import * as functions from "firebase-functions";
 import { defineSecret } from "firebase-functions/params";
-import { getApps, initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
+import { db } from "../lib/db.js";
 
 import { fetchAmazonOffers } from "../fetchers/amazon/paapi.js";
 import { searchAmazonItems } from "../fetchers/amazon/search.js";
@@ -10,10 +10,8 @@ import {
   mapAmazonItemToProduct,
   type AmazonItem,
 } from "../lib/mapAmazonToProduct.js";
-
-// ---- Firebase Admin
-if (getApps().length === 0) initializeApp();
-const db = getFirestore();
+import { shouldBoostHot } from "../lib/hotBoost.js";
+import { computeFreshFor } from "../lib/staleness.js";
 
 const REGION = "asia-northeast1";
 const AMAZON_ACCESS_KEY = defineSecret("AMAZON_ACCESS_KEY");
@@ -21,10 +19,25 @@ const AMAZON_SECRET_KEY = defineSecret("AMAZON_SECRET_KEY");
 const AMAZON_PARTNER_TAG = defineSecret("AMAZON_PARTNER_TAG");
 
 const MAX_ATTEMPTS = 5;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Site = {
   id: string;
-  affiliate?: { amazon?: { partnerTag?: string } };
+  affiliate?: {
+    amazon?: {
+      partnerTag?: string;
+      marketplace?:
+        | "JP"
+        | "US"
+        | "UK"
+        | "DE"
+        | "FR"
+        | "CA"
+        | "IT"
+        | "ES"
+        | "IN";
+    };
+  };
   seeds?: { asins?: string[] };
   productRules?: {
     categoryId?: string;
@@ -40,7 +53,13 @@ type Site = {
     cooldownDays?: number;
     minPrice?: number;
     maxPrice?: number;
-    searchIndex?: string; // ★追加
+    searchIndex?: string;
+    hotBoostRules?: Array<
+      | { type: "seed" }
+      | { type: "priceBetween"; min?: number; max?: number }
+      | { type: "tagWillBe"; tag: string }
+      | { type: "keywordMatches"; pattern: string }
+    >;
   };
 };
 
@@ -50,6 +69,7 @@ function isValidAsin(s: unknown): s is string {
 function qid(siteId: string, asin: string) {
   return `${siteId}_${asin}`;
 }
+
 function matchRules(
   title: string,
   rules?: Site["productRules"],
@@ -67,15 +87,10 @@ function matchRules(
   return true;
 }
 
-/** doc.getAll 代替 */
 async function safeGetAll(refs: FirebaseFirestore.DocumentReference[]) {
   return Promise.all(refs.map((r) => r.get()));
 }
 
-/**
- * ASIN をキューに投入する。戻り値は「実際に新規で queued にできた件数」。
- * opts.forceCooldown=true ならクールダウンを無視して queued に戻す。
- */
 export async function enqueueAsins(
   siteId: string,
   asins: string[],
@@ -83,11 +98,9 @@ export async function enqueueAsins(
 ): Promise<number> {
   const now = Date.now();
   const cooldownMs = (opts?.cooldownDays || 0) * 24 * 60 * 60 * 1000;
-
   const valid = Array.from(new Set(asins.filter(isValidAsin)));
   if (!valid.length) return 0;
 
-  // 既存 products 除外
   const prodIds = valid.map((a) => `${siteId}_${a}`);
   let existing = new Set<string>();
   if (prodIds.length) {
@@ -101,7 +114,6 @@ export async function enqueueAsins(
   const toCheck = valid.filter((a) => !existing.has(a));
   if (!toCheck.length) return 0;
 
-  // asinQueue の状態を見て投入判定
   const qSnaps = await safeGetAll(
     toCheck.map((a) => db.collection("asinQueue").doc(qid(siteId, a)))
   );
@@ -109,20 +121,16 @@ export async function enqueueAsins(
   qSnaps.forEach((s, i) => {
     const asin = toCheck[i];
     if (!s.exists) return enqueueList.push(asin);
-
     const q = s.data() as any;
     const busy = q?.status === "queued" || q?.status === "processing";
     const recent =
       typeof q?.updatedAt === "number" && now - q.updatedAt < cooldownMs;
     const reached =
       (q?.attempts ?? 0) >= MAX_ATTEMPTS || q?.status === "failed";
-
-    // 手動実行で強制したい場合は cooldown を無視
     if (opts?.forceCooldown) {
       if (!busy && !reached) enqueueList.push(asin);
       return;
     }
-
     if (!busy && !recent && !reached) enqueueList.push(asin);
   });
 
@@ -181,7 +189,6 @@ export async function discoverForSite(
 ) {
   const siteId = site.id;
 
-  // seeds
   if (site.seeds?.asins?.length) {
     await enqueueAsins(siteId, site.seeds.asins, {
       cooldownDays: site.discovery?.cooldownDays,
@@ -192,10 +199,13 @@ export async function discoverForSite(
   console.log(`[discover] site=${siteId} claim=${claims.length}`);
   if (!claims.length) return { claimed: 0, upserts: 0 };
 
-  const partnerTag = site.affiliate?.amazon?.partnerTag;
+  const aff = site.affiliate?.amazon || {};
   const result = await fetchAmazonOffers(
     claims.map((c) => c.asin),
-    { partnerTag }
+    {
+      partnerTag: aff.partnerTag,
+      marketplace: (aff.marketplace as any) || "JP",
+    }
   );
   console.log("[discover] offers keys =", Object.keys(result).length);
 
@@ -219,6 +229,19 @@ export async function discoverForSite(
           ? { errorCode: "PAAPI", errorMessage: "Fetch failed (max attempts)" }
           : {}),
       });
+      if (willFail) {
+        batch.set(
+          db.collection("asinDeadLetter").doc(qid(siteId, asin)),
+          {
+            siteId,
+            asin,
+            reason: "PAAPI",
+            attempts: nextAttempts,
+            lastTriedAt: now,
+          },
+          { merge: true }
+        );
+      }
       console.warn(
         `[discover] paapi ${
           willFail ? "failed" : "miss -> requeue"
@@ -245,13 +268,12 @@ export async function discoverForSite(
       ImageUrl: data.imageUrl ?? undefined,
       Price: data.price,
       DetailPageURL: data.url,
-      // 追加（paapi.ts 側で拾った値を result に含めている前提）
-      Features: (data as any).features, // string[]（任意）
-      Dimensions: (data as any).dimensions, // 任意
-      Material: (data as any).material, // 任意
-      WarrantyText: (data as any).warranty, // 任意
-      MerchantName: (data as any).merchant, // 任意
-      OfferCount: (data as any).offerCount, // 任意
+      Features: (data as any).features,
+      Dimensions: (data as any).dimensions,
+      Material: (data as any).material,
+      WarrantyText: (data as any).warranty,
+      MerchantName: (data as any).merchant,
+      OfferCount: (data as any).offerCount,
     };
 
     const prod = mapAmazonItemToProduct(ai, {
@@ -262,12 +284,27 @@ export async function discoverForSite(
         "general",
     });
 
+    // hot昇格評価
+    const text = [data.title, ...(data.features || [])]
+      .filter(Boolean)
+      .join(" / ");
+    const boost = shouldBoostHot({
+      asin,
+      seeds: site.seeds?.asins,
+      price: data.price,
+      futureTags: [],
+      textForMatch: text,
+      rules: site.discovery?.hotBoostRules,
+    });
+    if (boost) {
+      (prod as any).freshUntil = computeFreshFor("hot", now);
+      batch.update(qref, { priority: -10 });
+    }
+
     const docId = `${siteId}_${asin}`;
     const pref = db.collection("products").doc(docId);
-
     batch.set(pref, prod, { merge: true });
     batch.update(qref, { status: "done", updatedAt: now });
-
     upserts++;
     console.log(
       `[discover] upsert ${siteId} ${docId} price=${
@@ -280,7 +317,23 @@ export async function discoverForSite(
   return { claimed: claims.length, upserts };
 }
 
-// ---------------- Schedules ----------------
+// ---- ここから：検索ジョブの品質アップ版 ----
+
+// include/exclude の簡易フィルタ
+function shouldKeepByProductRules(
+  title: string | undefined,
+  rules?: Site["productRules"]
+): boolean {
+  if (!rules) return true;
+  const t = (title || "").toLowerCase();
+  const inc = rules.includeKeywords || [];
+  const exc = rules.excludeKeywords || [];
+  if (exc.length && exc.some((kw) => t.includes(kw.toLowerCase())))
+    return false;
+  if (inc.length && inc.some((kw) => t.includes(kw.toLowerCase()))) return true;
+  return inc.length === 0;
+}
+
 export const scheduledDiscoverProducts = functions
   .runWith({
     secrets: [AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AMAZON_PARTNER_TAG],
@@ -322,7 +375,7 @@ export const scheduledDiscoverFromSearch = functions
       const kws = disc.searchKeywords || [];
       if (!kws.length) continue;
 
-      const sIndex = disc.searchIndex || "OfficeProducts"; // ★追加（既定）
+      const sIndex = disc.searchIndex || "OfficeProducts";
       const maxPage = Math.max(1, Math.min(10, disc.maxSearchItemPage || 3));
       const randomize = !!disc.randomizePage;
       const perRun = Math.min(25, disc.maxPerRun || 25);
@@ -330,21 +383,37 @@ export const scheduledDiscoverFromSearch = functions
       const maxP = disc.maxPrice ?? Number.MAX_SAFE_INTEGER;
 
       try {
+        const globalSet = new Set<string>(); // 全キーワード横断の重複除去
+
         for (const kw of kws) {
+          if (globalSet.size >= perRun) break;
+
           const page = randomize ? 1 + Math.floor(Math.random() * maxPage) : 1;
           const items = await searchAmazonItems(kw, 10, page, {
             sortBy: "Featured",
-            searchIndex: sIndex, // ★ここで渡す
+            searchIndex: sIndex,
+            partnerTag: s.affiliate?.amazon?.partnerTag,
+            marketplace: (s.affiliate?.amazon?.marketplace as any) || "JP",
           });
-          const asins = Array.from(
-            new Set(
-              items
-                .filter((i) => (i.price ?? 0) >= minP && (i.price ?? 0) <= maxP)
-                .map((i) => i.asin)
-            )
-          );
+
+          const filtered = items
+            .filter((i) => (i.price ?? 0) >= minP && (i.price ?? 0) <= maxP)
+            .filter((i) => shouldKeepByProductRules(i.title, s.productRules));
+
+          for (const it of filtered) {
+            if (globalSet.size >= perRun) break;
+            if (!it.asin) continue;
+            globalSet.add(it.asin);
+          }
+
+          await sleep(1200); // API節度
+        }
+
+        const asins = Array.from(globalSet);
+        if (asins.length) {
           await enqueueAsins(s.id, asins, { cooldownDays: disc.cooldownDays });
         }
+
         await discoverForSite(s, perRun, {
           relaxed: !!disc.relaxedOnFirstImport,
         });
@@ -354,7 +423,6 @@ export const scheduledDiscoverFromSearch = functions
     }
   });
 
-// ---------------- Manual (GET/POST) ----------------
 export const runDiscoverNow = functions
   .runWith({
     secrets: [AMAZON_ACCESS_KEY, AMAZON_SECRET_KEY, AMAZON_PARTNER_TAG],
@@ -378,6 +446,7 @@ export const runDiscoverNow = functions
 
       const site = { id: sdoc.id, ...(sdoc.data() as any) } as Site;
       const disc = site.discovery || {};
+
       const limit = Math.min(
         Math.max(Number(req.query.limit || req.body?.limit) || 10, 1),
         25
@@ -397,16 +466,15 @@ export const runDiscoverNow = functions
         ) ||
         (!!disc.relaxedOnFirstImport &&
           !(req.query.relaxed || req.body?.relaxed));
-
       const searchIndex = String(
         req.query.searchIndex ||
           req.body?.searchIndex ||
           disc.searchIndex ||
           "OfficeProducts"
-      ).trim(); // ★追加
+      ).trim();
 
-      let enqKeyword = 0,
-        enqDirect = 0;
+      let enqKeyword = 0;
+      let enqDirect = 0;
 
       if (keyword) {
         const items = await searchAmazonItems(
@@ -416,17 +484,19 @@ export const runDiscoverNow = functions
           {
             sortBy: "Featured",
             searchIndex,
+            partnerTag: site.affiliate?.amazon?.partnerTag,
+            marketplace: (site.affiliate?.amazon?.marketplace as any) || "JP",
           }
         );
         const minP = disc.minPrice ?? 0;
         const maxP = disc.maxPrice ?? Number.MAX_SAFE_INTEGER;
-        const asins = Array.from(
-          new Set(
-            items
-              .filter((i) => (i.price ?? 0) >= minP && (i.price ?? 0) <= maxP)
-              .map((i) => i.asin)
-          )
-        );
+
+        // include/exclude の簡易フィルタも適用
+        const filtered = items
+          .filter((i) => (i.price ?? 0) >= minP && (i.price ?? 0) <= maxP)
+          .filter((i) => shouldKeepByProductRules(i.title, site.productRules));
+
+        const asins = Array.from(new Set(filtered.map((i) => i.asin)));
         await enqueueAsins(siteId, asins, { cooldownDays: disc.cooldownDays });
         enqKeyword = asins.length;
       }

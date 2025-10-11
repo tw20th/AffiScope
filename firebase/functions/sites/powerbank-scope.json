@@ -8,7 +8,19 @@
     "logoUrl": "/logos/chargescope.svg",
     "theme": "light"
   },
+
+  "analytics": {
+    "ga4MeasurementId": "G-L9D2PEC6DB"
+  },
   "categoryPreset": ["power-bank"],
+  "homeCopy": {
+    "title": "外出先の“電池切れ不安”をゼロにする",
+    "subtitle": "容量(mAh)・出力(W)・重さ・機内持込の基準で、あなたに合うモバイルバッテリーを毎日自動更新",
+    "dataSourceLabel": "Amazon",
+    "note": "本ページは広告を含みます",
+    "featuredTitle": "悩み別おすすめ",
+    "blogsTitle": "選び方と比較ガイド"
+  },
   "defaultPersona": "外出が多い人",
   "painRules": [
     {
@@ -19,15 +31,27 @@
     },
     {
       "id": "carry_weight",
-      "label": "とにかく軽くしたい",
+      "label": "とにかく軽く・薄くしたい",
       "match": { "anyTags": ["軽量", "薄型"] },
       "personas": ["旅行者", "学生"]
     },
     {
       "id": "multi_device",
-      "label": "複数端末を同時充電したい",
-      "match": { "anyTags": ["2台同時", "3台同時", "複数ポート"] },
+      "label": "複数端末を同時に充電したい",
+      "match": { "anyTags": ["多台同時", "複数ポート", "2台同時", "3台同時"] },
       "personas": ["ビジネスパーソン", "ガジェット好き"]
+    },
+    {
+      "id": "flight_ok",
+      "label": "飛行機に持ち込みたい",
+      "match": { "anyTags": ["機内持込可"] },
+      "personas": ["旅行者", "留学生"]
+    },
+    {
+      "id": "magsafe_wish",
+      "label": "iPhoneをMagSafeで“ピタ充”したい",
+      "match": { "anyTags": ["MagSafe対応", "ケーブル内蔵"] },
+      "personas": ["iPhoneユーザー"]
     }
   ],
   "productRules": {
@@ -38,55 +62,154 @@
       "急速充電",
       "PD",
       "Type-C",
-      "USB-C"
+      "USB-C",
+      "MagSafe",
+      "ケーブル内蔵",
+      "薄型",
+      "軽量"
     ],
     "excludeKeywords": [
       "ケーブル単品",
       "ケース",
       "充電スタンド",
       "電池単体",
-      "ソーラーパネル単体"
+      "ソーラーパネル単体",
+      "ACアダプタ",
+      "据置 ワイヤレス充電器"
     ]
   },
-  "affiliate": { "amazon": { "partnerTag": "tw20th0c-22" } },
+  "affiliate": {
+    "amazon": { "partnerTag": "tw20th0c-22", "marketplace": "JP" }
+  },
   "features": { "blogs": true, "ranking": true },
   "seeds": { "asins": [] },
   "discovery": {
     "searchKeywords": [
-      "モバイルバッテリー",
-      "急速充電 PD",
-      "Type-C 10000mAh",
-      "軽量 10000mAh",
-      "20000mAh PD"
+      "モバイルバッテリー 10000mAh PD",
+      "モバイルバッテリー 20000mAh 65W",
+      "モバイルバッテリー 薄型 軽量",
+      "モバイルバッテリー 機内持ち込み",
+      "MagSafe モバイルバッテリー",
+      "ケーブル内蔵 モバイルバッテリー",
+      "USB-C 2ポート モバイルバッテリー"
     ],
     "searchIndex": "Electronics",
     "maxPerRun": 25,
-    "maxSearchItemPage": 8,
+    "maxSearchItemPage": 5,
     "randomizePage": true,
     "relaxedOnFirstImport": false,
     "cooldownDays": 10,
-    "minPrice": 1000,
-    "maxPrice": 20000
+    "minPrice": 1500,
+    "maxPrice": 20000,
+    "hotBoostRules": [
+      { "type": "seed" },
+      { "type": "priceBetween", "min": 2500, "max": 6000 },
+      {
+        "type": "keywordMatches",
+        "pattern": "PD|Power\\s*Delivery|USB-?C|Type-?C|30W|45W|65W|100W"
+      },
+      { "type": "keywordMatches", "pattern": "10000mAh|20000mAh|30000mAh" },
+      { "type": "keywordMatches", "pattern": "薄型|軽量|ケーブル内蔵|MagSafe" },
+      {
+        "type": "keywordMatches",
+        "pattern": "2ポート|3ポート|同時充電|デュアル|トリプル"
+      },
+      { "type": "tagWillBe", "tag": "急速充電" },
+      { "type": "tagWillBe", "tag": "大容量" },
+      { "type": "tagWillBe", "tag": "軽量" },
+      { "type": "tagWillBe", "tag": "薄型" },
+      { "type": "tagWillBe", "tag": "機内持込可" },
+      { "type": "tagWillBe", "tag": "MagSafe対応" },
+      { "type": "tagWillBe", "tag": "ケーブル内蔵" },
+      { "type": "tagWillBe", "tag": "多台同時" }
+    ]
   },
   "tagRules": [
     {
       "tag": "急速充電",
       "any": [
-        { "type": "titleMatches", "pattern": "PD|Power Delivery|急速" },
+        { "type": "titleMatches", "pattern": "PD|Power\\s*Delivery|急速" },
         { "type": "featureMatches", "pattern": "PD|30W|45W|65W|100W" }
       ]
     },
     {
       "tag": "大容量",
       "any": [
-        { "type": "titleMatches", "pattern": "20000mAh|30000mAh|50000mAh" }
+        { "type": "titleMatches", "pattern": "20000mAh|30000mAh|50000mAh" },
+        { "type": "featureMatches", "pattern": "20000mAh|30000mAh|50000mAh" }
       ]
     },
     {
       "tag": "軽量",
-      "any": [{ "type": "titleMatches", "pattern": "軽量|薄型|コンパクト" }]
+      "any": [
+        { "type": "titleMatches", "pattern": "軽量|\\b1?\\d{2}g\\b" },
+        { "type": "featureMatches", "pattern": "軽量|\\b1?\\d{2}g\\b" }
+      ]
+    },
+    {
+      "tag": "薄型",
+      "any": [
+        { "type": "titleMatches", "pattern": "薄型|スリム" },
+        { "type": "featureMatches", "pattern": "薄型|スリム" }
+      ]
+    },
+    {
+      "tag": "多台同時",
+      "any": [
+        {
+          "type": "titleMatches",
+          "pattern": "2台同時|3台同時|同時充電|2ポート|3ポート|デュアル|トリプル"
+        },
+        {
+          "type": "featureMatches",
+          "pattern": "2台同時|3台同時|同時充電|2ポート|3ポート|USB-?C\\s?×?2|Type-?C\\s?×?2"
+        }
+      ]
+    },
+    {
+      "tag": "MagSafe対応",
+      "any": [
+        { "type": "titleMatches", "pattern": "MagSafe" },
+        { "type": "featureMatches", "pattern": "MagSafe" }
+      ]
+    },
+    {
+      "tag": "ケーブル内蔵",
+      "any": [
+        { "type": "titleMatches", "pattern": "ケーブル内蔵|一体型" },
+        { "type": "featureMatches", "pattern": "ケーブル内蔵|一体型" }
+      ]
+    },
+    {
+      "tag": "機内持込可",
+      "any": [
+        { "type": "titleMatches", "pattern": "機内持(込|ち)み|飛行機" },
+        { "type": "featureMatches", "pattern": "機内持(込|ち)み|飛行機|100Wh" }
+      ]
     }
   ],
+  "contentPlan": {
+    "daily": {
+      "morningIntent": "price-drop",
+      "noonIntent": "who-fit",
+      "rewriteAt": "23:00",
+      "rewriteMinScore": 85
+    },
+    "weekly": { "pillarIntent": "comparison", "weekday": "SU", "time": "09:00" }
+  },
+  "keywordPools": {
+    "comparison": [
+      "10000mAh モバイルバッテリー 比較",
+      "20000mAh PD 65W 比較",
+      "薄型 軽量 ケーブル内蔵 比較"
+    ],
+    "guide": [
+      "モバイルバッテリー 選び方",
+      "PD と急速充電の違い",
+      "飛行機 機内持ち込み 基準",
+      "MagSafe モバイルバッテリー 選び方"
+    ]
+  },
   "createdAt": 0,
   "updatedAt": 0
 }

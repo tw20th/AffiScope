@@ -14,6 +14,16 @@ function getOpenAI(): OpenAI {
   return (_openai ??= new OpenAI({ apiKey: key }));
 }
 
+async function getBlogEnabledSiteIds(): Promise<string[]> {
+  const snap = await db
+    .collection("sites")
+    .where("features.blogs", "==", true)
+    .get();
+  return snap.docs
+    .map((d) => (d.data() as { siteId?: string }).siteId!)
+    .filter(Boolean);
+}
+
 /** 簡易スコア（0-100） */
 function scoreContent(md: string) {
   const len = md?.length ?? 0;
@@ -27,9 +37,13 @@ function scoreContent(md: string) {
 
 /** 1件リライト */
 async function rewriteOne(doc: FirebaseFirestore.QueryDocumentSnapshot) {
-  const data = doc.data() as any;
-  const content: string = data.content || "";
-  const title: string = data.title || "(no title)";
+  const data = doc.data() as {
+    content?: string;
+    title?: string;
+    analysisHistory?: unknown[];
+  };
+  const content = data.content ?? "";
+  const title = data.title ?? "(no title)";
   const current = scoreContent(content);
 
   if (current >= 85) {
@@ -41,8 +55,7 @@ async function rewriteOne(doc: FirebaseFirestore.QueryDocumentSnapshot) {
   const sys =
     "あなたは日本語のSEO編集者です。与えられたMarkdown記事を、検索意図（購入前の悩み解決）に沿ってブラッシュアップし、E-E-A-Tを意識しつつCTRが上がるようにリライトしてください。リンクURLは変更しないでください。過剰表現は禁止。";
   const user =
-    `タイトル: ${title}\n` +
-    `本文(そのままMarkdown):\n\n${content}\n\n` +
+    `タイトル: ${title}\n本文(そのままMarkdown):\n\n${content}\n\n` +
     "やること: 1) 導入で悩み→解決のフレーム提示 2) 競合との違いを箇条書き 3) FAQを3つ追加 4) まとめでCTA。";
 
   const resp = await openai.chat.completions.create({
@@ -62,7 +75,7 @@ async function rewriteOne(doc: FirebaseFirestore.QueryDocumentSnapshot) {
       content: newMd,
       updatedAt: Date.now(),
       analysisHistory: [
-        ...(data.analysisHistory ?? []),
+        ...(Array.isArray(data.analysisHistory) ? data.analysisHistory : []),
         { before: current, after, updatedAt: Date.now(), note: "auto-rewrite" },
       ],
     },
@@ -79,25 +92,36 @@ export const scheduledRewriteLowScoreBlogs = functions
   .pubsub.schedule("0 23 * * *") // JST 23:00
   .timeZone("Asia/Tokyo")
   .onRun(async () => {
-    // published の中からスコアが低そうな候補を上位にし、1件だけリライト
-    const snap = await db
-      .collection("blogs")
-      .where("status", "==", "published")
-      .orderBy("updatedAt", "asc")
-      .limit(30)
-      .get();
+    const siteIds = await getBlogEnabledSiteIds();
+    const results: Array<{ siteId: string; target?: string | null }> = [];
 
-    const candidates = snap.docs
-      .map((d) => ({
-        d,
-        s: scoreContent(((d.data() as any).content as string) || ""),
-      }))
-      .sort((a, b) => a.s - b.s);
+    for (const siteId of siteIds) {
+      const snap = await db
+        .collection("blogs")
+        .where("status", "==", "published")
+        .where("siteId", "==", siteId)
+        .orderBy("updatedAt", "asc")
+        .limit(30)
+        .get();
 
-    const target = candidates[0]?.d;
-    if (!target) {
-      console.log("[rewrite] no target.");
-      return null;
+      // スコアが低い順に並べて1件だけ
+      const targetDoc =
+        snap.docs
+          .map((d) => ({
+            d,
+            s: scoreContent((d.data() as { content?: string }).content ?? ""),
+          }))
+          .sort((a, b) => a.s - b.s)[0]?.d ?? null;
+
+      if (!targetDoc) {
+        console.log(`[rewrite] no target for site=${siteId}`);
+        results.push({ siteId, target: null });
+        continue;
+      }
+
+      await rewriteOne(targetDoc);
+      results.push({ siteId, target: targetDoc.id });
     }
-    return rewriteOne(target);
+
+    return { results };
   });
