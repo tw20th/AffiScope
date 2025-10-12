@@ -4,6 +4,9 @@ import { notFound } from "next/navigation";
 import { getServerSiteId } from "@/lib/site-server";
 import { fetchBlogBySlug, fetchBestPrice } from "@/lib/queries";
 
+import PainRail from "@/components/pain/PainRail";
+import { loadPainRules } from "@/lib/pain-helpers";
+
 export const revalidate = 3600;
 export const dynamic = "force-dynamic";
 
@@ -157,6 +160,7 @@ export default async function BlogDetail({
   params: { slug: string };
 }) {
   const siteId = getServerSiteId();
+  const painRules = await loadPainRules(siteId);
 
   const blog = await fetchBlogBySlug(params.slug);
   if (!blog || blog.siteId !== siteId) notFound();
@@ -281,6 +285,12 @@ export default async function BlogDetail({
       <article className="prose prose-neutral mt-6 max-w-none">
         <div dangerouslySetInnerHTML={{ __html: html }} />
       </article>
+
+      {/* 関連ガイド（悩みから選ぶ） */}
+      <div className="mt-8 rounded-2xl border bg-white p-5">
+        <div className="mb-2 text-sm text-gray-600">関連ガイド</div>
+        <PainRail className="my-10" />
+      </div>
 
       {/* 次の一歩 */}
       <div className="mt-8 rounded-2xl border bg-white p-5">

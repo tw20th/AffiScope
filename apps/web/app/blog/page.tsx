@@ -4,6 +4,9 @@ import BlogCard from "@/components/blog/BlogCard";
 import { getServerSiteId } from "@/lib/site-server";
 import { fetchBlogs, type BlogRow } from "@/lib/queries";
 
+import PainRail from "@/components/pain/PainRail";
+import { loadPainRules } from "@/lib/pain-helpers";
+
 export const revalidate = 1800;
 export const dynamic = "force-dynamic";
 
@@ -43,6 +46,8 @@ export default async function BlogIndex({
   searchParams?: SP;
 }) {
   const siteId = getServerSiteId();
+  const painRules = await loadPainRules(siteId);
+
   const sort: SortKey = (searchParams?.sort as SortKey) ?? "recent";
   const type: BlogType = (searchParams?.type as BlogType) ?? "all";
 
@@ -162,6 +167,9 @@ export default async function BlogIndex({
         <div className="mx-2 h-4 w-px bg-gray-200" />
         <div className="opacity-80">最終公開: {formatJp(lastPub)}</div>
       </div>
+
+      {/* サブ導線：悩みから探す */}
+      <PainRail className="my-10" />
 
       {filtered.length === 0 ? (
         <p className="mt-4 text-sm text-gray-600">

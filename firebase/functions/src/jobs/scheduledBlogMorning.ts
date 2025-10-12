@@ -2,6 +2,10 @@
 import * as functions from "firebase-functions";
 import { getFirestore } from "firebase-admin/firestore";
 import OpenAI from "openai";
+import {
+  appendPainCTASection,
+  buildMorningMessages,
+} from "../lib/prompts/blogPrompts.js";
 
 const REGION = "asia-northeast1";
 const db = getFirestore();
@@ -91,9 +95,7 @@ async function generateOneNewBlogForSite(siteId: string) {
   }
 
   const openai = getOpenAI();
-  const sys =
-    "あなたは日本語のSEOライターです。商品名と価格情報をもとに、検索意図（値下げ情報/購入検討）に合致した短いブログ記事をMarkdownで書いてください。広告表記、見出し、箇条書き、最後にCTA(公式リンク)を含めること。";
-  const user = `商品名: ${productName}\nASIN: ${asin}\nサイト: ${siteId}\nトーン: 誠実・要点を簡潔に\n出力: # 見出し / ポイント3つ / どこで買う？(Amazonリンクだけ) / まとめ`;
+  const { sys, user } = buildMorningMessages({ siteId, asin, productName });
 
   const resp = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -104,8 +106,10 @@ async function generateOneNewBlogForSite(siteId: string) {
     temperature: 0.3,
   });
 
-  const content =
+  // 本文 + 関連ガイド（悩みボタンのショートコード）
+  const raw =
     resp.choices[0]?.message?.content?.trim() || `# ${productName} 値下げ情報`;
+  const content = await appendPainCTASection(siteId, raw);
 
   const nowTs = Date.now();
   await db

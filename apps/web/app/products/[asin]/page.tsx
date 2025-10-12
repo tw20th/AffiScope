@@ -11,6 +11,9 @@ import {
   type MiniBlog,
 } from "@/lib/queries";
 
+import PainRail from "@/components/pain/PainRail";
+import { loadPainRules } from "@/lib/pain-helpers";
+
 export const revalidate = 60;
 export const dynamic = "force-dynamic";
 
@@ -67,6 +70,7 @@ export default async function ProductDetailPage({
   params: { asin: string };
 }) {
   const siteId = process.env.NEXT_PUBLIC_SITE_ID ?? getServerSiteId();
+  const painRules = await loadPainRules(siteId);
   const asin = params.asin;
 
   const product = await fetchProductByAsin(asin, siteId);
@@ -251,6 +255,9 @@ export default async function ProductDetailPage({
               </Link>
             </div>
           )}
+
+          {/* お悩みレール */}
+          <PainRail className="my-10" />
         </div>
       </section>
 

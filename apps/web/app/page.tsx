@@ -1,9 +1,12 @@
+// apps/web/app/page.tsx
 import Link from "next/link";
 import type { Product } from "@affiscope/shared-types";
+import type { FsValue } from "@/lib/firestore-rest";
+
 import { fsRunQuery, vNum, vStr, docIdFromName } from "@/lib/firestore-rest";
 import { getServerSiteId } from "@/lib/site-server";
 
-import PainNav, { PainItem } from "@/components/common/PainNav";
+// import PainNav, { PainItem } from "@/components/common/PainNav"; // ← 不要になったら削除OK
 import { decodePainRules, type PainRuleLite } from "@/lib/pain-rules";
 import HeroBadges from "@/components/home/HeroBadges";
 import FeaturedSection from "@/components/home/FeaturedSection";
@@ -29,6 +32,17 @@ type SiteConfigDoc = {
   };
   painRules?: PainRuleLite[];
   [k: string]: unknown;
+};
+
+type FsValueCompat = {
+  stringValue?: string;
+  integerValue?: string;
+  doubleValue?: number;
+  booleanValue?: boolean;
+  timestampValue?: string;
+  nullValue?: null;
+  mapValue?: { fields?: Record<string, any> };
+  arrayValue?: { values?: FsValueCompat[] };
 };
 
 async function loadSiteConfig(siteId: string): Promise<SiteConfigDoc> {
@@ -140,7 +154,7 @@ function withDerivedCopy(cfg: SiteConfigDoc): SiteConfigDoc {
     "gaming-chair": {
       title: "ゲーミングチェアの比較・最安情報",
       subtitle: "Amazonの価格と新着ブログを毎日自動更新",
-      featured: "注目の商品",
+      featured: "悩み別おすすめ",
       blogs: "新着ブログ",
       dataSource: "Amazon",
       note: "本ページは広告を含みます",
@@ -184,7 +198,7 @@ async function fetchLatestBlogs(
       limit,
     });
     return docs.map((d) => {
-      const f = d.fields as Record<string, any>;
+      const f = d.fields as Record<string, FsValue>;
       return {
         slug: docIdFromName(d.name),
         title: vStr(f, "title") ?? "(no title)",
@@ -205,11 +219,11 @@ async function fetchLatestBlogs(
       () =>
         [] as unknown as Array<{
           name: string;
-          fields: Record<string, any>;
+          fields: Record<string, unknown>;
         }>
     );
     return docs.map((d) => {
-      const f = d.fields as Record<string, any>;
+      const f = d.fields as Record<string, FsValue>;
       return {
         slug: docIdFromName(d.name),
         title: vStr(f, "title") ?? "(no title)",
@@ -244,12 +258,11 @@ async function fetchFeaturedProducts(
       () =>
         [] as unknown as Array<{
           name: string;
-          fields: Record<string, any>;
+          fields: Record<string, unknown>;
         }>
     );
-
     return docs.map((d) => {
-      const f = d.fields as Record<string, any>;
+      const f = d.fields as Record<string, FsValue>;
       const price = vNum(f, "bestPrice.price");
       const url = vStr(f, "bestPrice.url");
       const source = vStr(f, "bestPrice.source") as
@@ -290,6 +303,109 @@ async function fetchFeaturedProducts(
   return run(false);
 }
 
+/* ===== ユーティリティ（悩みカード） ===== */
+type CardTheme = {
+  cardBg: string;
+  ctaBg: string;
+  accentText: string;
+  emoji: string;
+};
+
+function themeFor(id: string): CardTheme {
+  if (id.includes("back"))
+    return {
+      cardBg: "bg-gray-50",
+      ctaBg: "bg-emerald-600 hover:bg-emerald-700",
+      accentText: "text-emerald-700",
+      emoji: "😣",
+    };
+  if (id.includes("sweat"))
+    return {
+      cardBg: "bg-sky-50",
+      ctaBg: "bg-sky-600 hover:bg-sky-700",
+      accentText: "text-sky-700",
+      emoji: "🌬️",
+    };
+  if (id.includes("best_value"))
+    return {
+      cardBg: "bg-amber-50",
+      ctaBg: "bg-amber-600 hover:bg-amber-700",
+      accentText: "text-amber-700",
+      emoji: "💰",
+    };
+  return {
+    cardBg: "bg-indigo-50",
+    ctaBg: "bg-indigo-600 hover:bg-indigo-700",
+    accentText: "text-indigo-700",
+    emoji: "✨",
+  };
+}
+
+function PainButtonsGridFromRules({ rules }: { rules: PainRuleLite[] }) {
+  if (!rules || rules.length === 0) return null;
+  return (
+    <section aria-labelledby="pain-buttons-heading" className="mx-auto w-full">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 id="pain-buttons-heading" className="text-lg md:text-xl font-bold">
+          悩みから選ぶ
+        </h2>
+        <p className="text-xs text-gray-500">状況に合う商品へ最短導線</p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {rules.map((r) => {
+          const t = themeFor(r.id);
+          return (
+            <Link
+              key={r.id}
+              href={`/pain/${encodeURIComponent(r.id)}`}
+              className={[
+                "group block rounded-2xl border border-gray-100 p-5",
+                "shadow-sm hover:shadow-md transition-all",
+                t.cardBg,
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400",
+              ].join(" ")}
+            >
+              <div className="flex items-start gap-3">
+                <div className="text-3xl leading-none">{t.emoji}</div>
+                <div className="flex-1">
+                  <h3 className="text-base md:text-lg font-semibold tracking-tight">
+                    {r.label}
+                  </h3>
+                  {r.tags && r.tags.length > 0 && (
+                    <p className="mt-1 text-sm text-gray-600">
+                      #{r.tags.join(" #")}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <hr className="my-4 border-gray-200" />
+              <div
+                className={[
+                  "inline-flex items-center rounded-xl px-3 py-2 text-sm font-semibold text-white",
+                  "transition-colors group-hover:translate-x-0.5",
+                  t.ctaBg,
+                ].join(" ")}
+              >
+                今すぐチェック <span className="ml-1">→</span>
+              </div>
+              <p
+                className={[
+                  "mt-3 text-xs font-medium opacity-80",
+                  t.accentText,
+                ].join(" ")}
+              >
+                押すと「{r.label}」の解決ページへ
+              </p>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 /* ===== ページ本体 ===== */
 export default async function Page() {
   const siteId = getServerSiteId();
@@ -314,7 +430,6 @@ export default async function Page() {
     <main className="mx-auto max-w-6xl px-6 py-10">
       {/* breadcrumb */}
       <nav className="mb-2 text-sm text-gray-500">
-        {/* トップは “ホーム” 単独表示 */}
         <span className="opacity-70">ホーム</span>
       </nav>
 
@@ -340,7 +455,8 @@ export default async function Page() {
           }),
         }}
       />
-      {/* ▲▲▲ ここまで貼り付け ▲▲▲ */}
+
+      {/* ヒーロー */}
       <header className="mb-4">
         <h1 className="text-2xl md:text-3xl font-bold">{title}</h1>
         <p className="text-sm opacity-70">{subtitle}</p>
@@ -348,31 +464,12 @@ export default async function Page() {
 
       <HeroBadges dataSourceLabel={dataSourceLabel} note={note} />
 
-      {/* 悩みナビ */}
-      <PainNav
-        items={(site.painRules ?? []).map<PainItem>((r) => ({
-          id: r.id,
-          label: r.label,
-          tags: r.tags,
-          icon: r.id.includes("back")
-            ? "💺"
-            : r.id.includes("sweat")
-            ? "🌬️"
-            : r.id.includes("blackout")
-            ? "🔌"
-            : r.id.includes("camp")
-            ? "🏕️"
-            : r.id.includes("workation")
-            ? "💻"
-            : r.id.includes("safety")
-            ? "🧯"
-            : r.id.includes("best_value")
-            ? "💰"
-            : "✨",
-        }))}
-        className="mb-10"
-      />
+      {/* 悩みナビ（カード版） */}
+      <div className="my-10">
+        <PainButtonsGridFromRules rules={site.painRules ?? []} />
+      </div>
 
+      {/* 商品・ブログ */}
       <FeaturedSection title={featuredTitle} items={featured} />
       <BlogsSection title={blogsTitle} items={latestBlogs} />
     </main>

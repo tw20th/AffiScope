@@ -1,5 +1,5 @@
 // apps/web/lib/firestore-rest.ts
-type FsValue =
+export type FsValue =
   | { stringValue: string }
   | { integerValue: string }
   | { doubleValue: number }

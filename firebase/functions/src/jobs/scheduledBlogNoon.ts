@@ -2,6 +2,10 @@
 import * as functions from "firebase-functions";
 import { getFirestore } from "firebase-admin/firestore";
 import OpenAI from "openai";
+import {
+  appendPainCTASection,
+  buildNoonMessages,
+} from "../lib/prompts/blogPrompts.js";
 
 const REGION = "asia-northeast1";
 const db = getFirestore();
@@ -49,11 +53,7 @@ async function createBlog(
   slug: string
 ) {
   const openai = getOpenAI();
-  const sys =
-    "あなたは日本語のSEOライターです。朝記事とは重複しない観点で、用途別（誰に向くか）を明確にしたMarkdown記事を書いてください。広告表記、箇条書き、FAQ(3問)を含めること。";
-  const user =
-    `商品名: ${productName}\nASIN: ${asin}\nサイト: ${siteId}\n` +
-    `出力: # 見出し / ココが刺さる人 / 強み3つ / どこで買う？(Amazonリンク) / FAQ / まとめ`;
+  const { sys, user } = buildNoonMessages({ siteId, asin, productName });
 
   const resp = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -64,9 +64,11 @@ async function createBlog(
     temperature: 0.4,
   });
 
-  const content =
+  const raw =
     resp.choices[0]?.message?.content?.trim() ||
     `# ${productName} 評判/レビューまとめ`;
+  const content = await appendPainCTASection(siteId, raw);
+
   const nowTs = Date.now();
 
   await db

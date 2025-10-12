@@ -13,6 +13,9 @@ import {
 import { getSiteEntry } from "@/lib/site-server";
 import { getSiteConfig } from "@/lib/site-config";
 
+import PainRail from "@/components/pain/PainRail";
+import { loadPainRules } from "@/lib/pain-helpers";
+
 export const revalidate = 60;
 export const dynamic = "force-dynamic";
 
@@ -70,7 +73,6 @@ async function fetchProductsByCategoryId(
   categoryId: string
 ): Promise<Product[]> {
   const run = async (withOrder: boolean) => {
-    // ★ readonly 推論を避けるため "as const" は使わない
     const base: FsQueryArg = {
       collection: "products",
       where: [
@@ -172,11 +174,12 @@ export default async function ProductsPage({
 }) {
   const s = getSiteEntry(); // siteId / categoryPreset / domain
   const cfg = getSiteConfig(); // urlOrigin など（構造化データ用）
+  const painRules = await loadPainRules(s.siteId);
 
   // 1) カテゴリ一覧
   let cats = await fetchAllCategories(s.siteId);
 
-  // 2) デフォルトカテゴリ（クエリ > preset[0] > Firestore先頭 > “default”）
+  // 2) デフォルトカテゴリ
   const presetFirst = s.categoryPreset?.[0];
   const categorySlug =
     searchParams?.category ??
@@ -325,6 +328,9 @@ export default async function ProductsPage({
           <span className="opacity-70">※本ページは広告を含みます</span>
         </div>
       </div>
+
+      {/* 迷った人向けのサブ導線 */}
+      <PainRail className="my-10" />
 
       {/* リスト */}
       {items.length === 0 ? (
