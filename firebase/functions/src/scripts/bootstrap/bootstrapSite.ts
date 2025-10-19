@@ -2,8 +2,8 @@
 /**
  * サイト初期化ワンショット:
  * 1) sites/<siteId>.json を Firestore へ同期
- * 2) seeds の ASIN をキュー投入 → 取得(upsert)
- * 3) discovery.searchKeywords から検索→ASIN投入 → 取得(upsert)  ※ページ/件数をサイト設定に準拠
+ * 2) seeds の ASIN をキュー投入（--skip-search の場合はここまで）
+ * 3) --skip-search でなければ keyword 検索→ASIN投入 → discover 実行
  * 4) tagRules を読んで tags を自動付与
  *
  * 使い方:
@@ -17,7 +17,7 @@ try {
 } catch {}
 
 import { readFileSync } from "fs";
-import { resolve, join } from "path";
+import { resolve } from "path";
 import { db } from "../lib/db.js";
 
 import { enqueueAsins, discoverForSite } from "../jobs/discoverProducts.js";
@@ -158,7 +158,7 @@ async function main() {
   if (!sdoc.exists) throw new Error(`site not found after sync: ${siteId}`);
   const site = { id: sdoc.id, ...(sdoc.data() as any) } as any;
 
-  // 2) seeds → enqueue → discover
+  // 2) seeds → enqueue（--skip-search の場合はここで終了）
   const seeds = (site.seeds?.asins as string[]) || [];
   if (seeds.length) {
     await enqueueAsins(siteId, seeds, {
@@ -166,13 +166,11 @@ async function main() {
     });
     console.log(`[bootstrap] enqueued seeds: ${seeds.length}`);
   }
-  await discoverForSite(site, limitArg, {
-    relaxed: !!site.discovery?.relaxedOnFirstImport,
-  });
-  console.log("[bootstrap] discover(seeds/queue) done");
 
-  // 3) keyword 検索 → enqueue → discover（サイト設定を反映）
-  if (!skipSearch) {
+  if (skipSearch) {
+    console.log("[bootstrap] --skip-search specified -> skip discover/search");
+  } else {
+    // 3) keyword 検索 → enqueue → discover（サイト設定を反映）
     const kws = (site.discovery?.searchKeywords as string[]) || [];
     const sIndex = site.discovery?.searchIndex || "OfficeProducts";
     const minP = site.discovery?.minPrice ?? 0;
@@ -190,13 +188,10 @@ async function main() {
     const randomize = !!site.discovery?.randomizePage;
 
     const includeExcludeRules = site.productRules || null;
-
-    const enqueued = new Set<string>(); // ← 総数は size で管理
+    const enqueued = new Set<string>();
 
     for (const kw of kws) {
       if (enqueued.size >= maxPerRun) break;
-
-      // ページ選択
       const pagesToTry = randomize
         ? [Math.floor(Math.random() * maxPage) + 1]
         : Array.from({ length: maxPage }, (_, i) => i + 1);
@@ -224,13 +219,14 @@ async function main() {
     }
 
     const asins = Array.from(enqueued);
-    await enqueueAsins(siteId, asins, {
-      cooldownDays: site.discovery?.cooldownDays,
-    });
+    if (asins.length) {
+      await enqueueAsins(siteId, asins, {
+        cooldownDays: site.discovery?.cooldownDays,
+      });
+    }
 
-    await discoverForSite(site, limitArg, {
-      relaxed: !!site.discovery?.relaxedOnFirstImport,
-    });
+    // discover は「検索で積んだ ASIN を処理」するだけ
+    await discoverForSite(site, limitArg);
 
     console.log(
       `[bootstrap] search+discover done (enqueued by search: ${asins.length} / maxPerRun=${maxPerRun}, pages<=${maxPage}, randomize=${randomize})`

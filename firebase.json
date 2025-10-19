@@ -1,5 +1,6 @@
 {
   "functions": {
-    "predeploy": ["pnpm -C firebase/functions run predeploy:functions"]
+    "predeploy": ["pnpm -C firebase/functions run predeploy:functions"],
+    "source": "firebase/functions"
   }
 }

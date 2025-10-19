@@ -21,6 +21,7 @@
     "featuredTitle": "悩み別おすすめ電源",
     "blogsTitle": "悩み解決ガイド"
   },
+  "gsc": { "propertyUrl": "https://www.powerscope-lab.com/" },
   "defaultPersona": "防災を備えたい家庭",
   "painRules": [
     {
@@ -75,8 +76,23 @@
   },
   "affiliate": {
     "amazon": {
+      "region": "jp",
+      "marketplace": "www.amazon.co.jp",
       "partnerTag": "tw20th0c-22",
-      "marketplace": "JP"
+      "resources": [
+        "Images.Primary.Large",
+        "ItemInfo.Title",
+        "ItemInfo.ByLineInfo",
+        "ItemInfo.Features",
+        "ItemInfo.ProductInfo",
+        "Offers.Summaries.OfferCount",
+        "Offers.Listings.Price",
+        "Offers.Listings.MerchantInfo"
+      ],
+      "tps": 0.2,
+      "burst": 1,
+      "tpdMax": 3000,
+      "refresh": { "offersMins": 180, "catalogHours": 24 }
     }
   },
   "features": { "blogs": true, "ranking": true },

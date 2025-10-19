@@ -8,7 +8,6 @@
         { "fieldPath": "updatedAt", "order": "ASCENDING" }
       ]
     },
-
     {
       "collectionGroup": "products",
       "queryScope": "COLLECTION",
@@ -17,7 +16,6 @@
         { "fieldPath": "updatedAt", "order": "DESCENDING" }
       ]
     },
-
     {
       "collectionGroup": "products",
       "queryScope": "COLLECTION",
@@ -91,7 +89,6 @@
         { "fieldPath": "updatedAt", "order": "ASCENDING" }
       ]
     },
-
     {
       "collectionGroup": "products",
       "queryScope": "COLLECTION",
@@ -146,7 +143,6 @@
         { "fieldPath": "updatedAt", "order": "ASCENDING" }
       ]
     },
-
     {
       "collectionGroup": "blogs",
       "queryScope": "COLLECTION",
@@ -161,11 +157,45 @@
       "collectionGroup": "asinQueue",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "siteId", "order": "ASCENDING" },
+        { "fieldPath": "priority", "order": "ASCENDING" },
+        { "fieldPath": "attempts", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "ASCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "asinQueue",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "siteId", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "attempts", "order": "ASCENDING" },
         { "fieldPath": "priority", "order": "ASCENDING" },
         { "fieldPath": "updatedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "asinQueue",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "ASCENDING" },
+        { "fieldPath": "priority", "order": "ASCENDING" },
+        { "fieldPath": "attempts", "order": "ASCENDING" },
+        { "fieldPath": "siteId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "asinQueue",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "siteId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "ASCENDING" },
+        { "fieldPath": "priority", "order": "ASCENDING" },
+        { "fieldPath": "attempts", "order": "ASCENDING" }
       ]
     }
   ],

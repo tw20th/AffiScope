@@ -1,6 +1,7 @@
 // firebase/functions/src/scripts/buildSiteCatalog.ts
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { getSiteConfig } from "../../lib/sites.js";
 
 type SiteJson = {
   siteId: string;

@@ -1,3 +1,4 @@
+// firebase/functions/src/scripts/updateByAsins.ts
 try {
   if (process.env.FUNCTIONS_EMULATOR || !process.env.K_SERVICE) {
     await import("dotenv/config");
@@ -7,7 +8,9 @@ try {
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
-import { fetchAmazonOffers } from "../fetchers/amazon/paapi.js";
+import { getItemsOnce, type OfferHit } from "../services/paapi/client.js";
+import { getSiteConfig } from "../lib/siteConfig.js";
+import { getPaapiOptionsFromSite } from "../lib/paapiOpts.js";
 import { upsertOffers } from "../upsert/upsertOffers.js";
 
 if (getApps().length === 0) initializeApp();
@@ -26,17 +29,23 @@ async function main() {
     process.exit(1);
   }
 
-  const result = await fetchAmazonOffers(asins);
+  const siteCfg = await getSiteConfig(siteId);
+  const paapiCfg = getPaapiOptionsFromSite(siteCfg || {});
+
+  const result = (await getItemsOnce(asins, paapiCfg)) as Record<
+    string,
+    OfferHit
+  >;
 
   for (const asin of asins) {
-    const hit = result[asin];
+    const hit = result[asin] as OfferHit | undefined;
+
     console.log("[debug]", asin, {
       hasFeatures: !!hit?.features?.length,
       hasDims: !!hit?.dimensions,
       material: hit?.material,
       merchant: hit?.merchant,
       offerCount: hit?.offerCount,
-      warranty: hit?.warranty,
     });
 
     if (!hit) {
@@ -74,7 +83,6 @@ async function main() {
       };
     }
 
-    // specs
     if (hit.features || hit.dimensions || hit.material) {
       patch["specs"] = {
         ...(hit.dimensions ? { dimensions: hit.dimensions } : {}),
@@ -83,32 +91,20 @@ async function main() {
       };
     }
 
-    // trust（Firestore がシリアライズできるプリミティブに限定）
     const merchant =
       typeof hit.merchant === "string" ? hit.merchant : undefined;
     const offerCount =
       typeof hit.offerCount === "number" ? hit.offerCount : undefined;
-    const warrantyStr =
-      typeof hit.warranty === "string"
-        ? hit.warranty
-        : hit.warranty == null
-        ? undefined
-        : String(hit.warranty);
 
-    if (merchant || typeof offerCount === "number" || warrantyStr) {
+    if (merchant || typeof offerCount === "number") {
       patch["trust"] = {
         ...(merchant ? { merchant } : {}),
         ...(typeof offerCount === "number" ? { offerCount } : {}),
-        ...(warrantyStr ? { warranty: warrantyStr } : {}),
       };
     }
 
     await ref.set(
-      {
-        categoryId: "gaming-chair", // 必要に応じて上書き
-        ...patch,
-        createdAt: now, // 既存なら上書きされない
-      },
+      { categoryId: "gaming-chair", ...patch, createdAt: now },
       { merge: true }
     );
     console.log("[product] merged:", `${siteId}_${asin}`);

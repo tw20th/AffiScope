@@ -1,9 +1,20 @@
-// firebase/functions/src/fetchers/amazon/search.ts
 import paapi5sdk from "paapi5-nodejs-sdk";
 import { withRetry } from "../../lib/retry.js";
+// （適応リミッタは note 用に残してOK。スロット取得は Firestore の leaseToken で行う）
+import { adaptivePaapiLimiter as limiter } from "../../lib/adaptiveLimiter.js";
+import { leaseToken } from "../../lib/paapiRateLimiter.js";
 
-type Marketplace = "JP" | "US" | "UK" | "DE" | "FR" | "CA" | "IT" | "ES" | "IN";
-const ENDPOINTS: Record<Marketplace, { host: string; region: string }> = {
+type MarketplaceCode =
+  | "JP"
+  | "US"
+  | "UK"
+  | "DE"
+  | "FR"
+  | "CA"
+  | "IT"
+  | "ES"
+  | "IN";
+const ENDPOINTS: Record<MarketplaceCode, { host: string; region: string }> = {
   JP: { host: "webservices.amazon.co.jp", region: "us-west-2" },
   US: { host: "webservices.amazon.com", region: "us-east-1" },
   UK: { host: "webservices.amazon.co.uk", region: "eu-west-1" },
@@ -56,11 +67,54 @@ const SEARCH_RESOURCES = [
 ] as const;
 
 type SearchOpts = {
+  /** "Featured" など */
   sortBy?: string;
+  /** PA-API の SearchIndex */
   searchIndex?: string;
+  /** サイト別のパートナータグ（未指定は環境変数） */
   partnerTag?: string;
-  marketplace?: Marketplace;
+  /**
+   * サイト設定から来る値：
+   * - "JP" | "US" ... の **国コード**
+   * - "www.amazon.co.jp" のような **マーケットプレイスのホスト名**
+   * どちらでも可。自動で解決します。
+   */
+  marketplace?: string;
 };
+
+/** "JP" / "www.amazon.co.jp" の両方を受け取り、PA-API エンドポイントを解決する */
+function resolveEndpoint(marketplace?: string): {
+  code: MarketplaceCode;
+  host: string;
+  region: string;
+} {
+  if (!marketplace) return { code: "JP", ...ENDPOINTS.JP };
+
+  const raw = marketplace.trim();
+
+  // 国コード（大文字小文字どちらでも）
+  const upper = raw.toUpperCase();
+  if (upper in ENDPOINTS) {
+    const code = upper as MarketplaceCode;
+    return { code, ...ENDPOINTS[code] };
+  }
+
+  // ホスト名から推定
+  const m = raw.toLowerCase();
+  if (m.includes("co.jp")) return { code: "JP", ...ENDPOINTS.JP };
+  if (m.includes("amazon.com") && !m.includes(".com."))
+    return { code: "US", ...ENDPOINTS.US };
+  if (m.includes("co.uk")) return { code: "UK", ...ENDPOINTS.UK };
+  if (m.includes("amazon.de")) return { code: "DE", ...ENDPOINTS.DE };
+  if (m.includes("amazon.fr")) return { code: "FR", ...ENDPOINTS.FR };
+  if (m.includes("amazon.it")) return { code: "IT", ...ENDPOINTS.IT };
+  if (m.includes("amazon.es")) return { code: "ES", ...ENDPOINTS.ES };
+  if (m.includes("amazon.ca")) return { code: "CA", ...ENDPOINTS.CA };
+  if (m.includes("amazon.in")) return { code: "IN", ...ENDPOINTS.IN };
+
+  // 不明な場合は JP
+  return { code: "JP", ...ENDPOINTS.JP };
+}
 
 function createClient(opts?: SearchOpts) {
   const ACCESS_KEY = process.env.AMAZON_ACCESS_KEY;
@@ -68,15 +122,16 @@ function createClient(opts?: SearchOpts) {
   const FALLBACK_PARTNER = process.env.AMAZON_PARTNER_TAG;
 
   const partnerTag = opts?.partnerTag || FALLBACK_PARTNER;
-  const marketplace: Marketplace = opts?.marketplace || "JP";
   if (!ACCESS_KEY || !SECRET_KEY || !partnerTag)
     throw new Error("Missing PA-API creds.");
 
+  // AWS SDK の地域環境変数はクリア（paapi5sdkに任せる）
   delete (process.env as any).AWS_REGION;
   delete (process.env as any).AWS_DEFAULT_REGION;
   delete (process.env as any).AMAZON_REGION;
 
-  const ep = ENDPOINTS[marketplace];
+  const ep = resolveEndpoint(opts?.marketplace);
+
   const Paapi = paapi5sdk as unknown as PaapiModule;
   const client = Paapi.ApiClient.instance;
   client.accessKey = ACCESS_KEY;
@@ -84,7 +139,7 @@ function createClient(opts?: SearchOpts) {
   client.host = ep.host;
   client.region = ep.region;
 
-  return { Paapi, partnerTag };
+  return { Paapi, partnerTag, marketplaceCode: ep.code };
 }
 
 /** 検索API（サイト別 partnerTag / marketplace を利用） */
@@ -94,7 +149,7 @@ export async function searchAmazonItems(
   page = 1,
   opts?: SearchOpts
 ): Promise<Item[]> {
-  const { Paapi, partnerTag } = createClient(opts);
+  const { Paapi, partnerTag, marketplaceCode } = createClient(opts);
 
   const api = new Paapi.DefaultApi();
   const req = new Paapi.SearchItemsRequest();
@@ -107,12 +162,32 @@ export async function searchAmazonItems(
   if (opts?.searchIndex) req["SearchIndex"] = opts.searchIndex;
   req["Resources"] = [...SEARCH_RESOURCES];
 
+  // 1) Firestore 協調レート制御（TPS/TPD）
+  await leaseToken({ keySuffix: marketplaceCode });
+  // 2) 適応ウェイト（429 の学習のみ利用）
+  await limiter.schedule();
+
   const data = await withRetry(
     () =>
       new Promise<unknown>((res, rej) =>
-        api.searchItems(req, (e, d) => (e ? rej(e) : res(d)))
+        api.searchItems(req, (e: any, d: any) => {
+          if (e) {
+            const status = e?.status ?? e?.response?.status ?? e?.code ?? "";
+            const body =
+              e?.response?.data ?? e?.response?.text ?? e?.message ?? String(e);
+            if (
+              String(status) === "429" ||
+              /TooManyRequests/i.test(body || "")
+            ) {
+              limiter.note429();
+            }
+            return rej(e);
+          }
+          limiter.noteSuccess();
+          return res(d);
+        })
       ),
-    3
+    1
   ).catch((e: any) => {
     const status = e?.status ?? e?.response?.status ?? e?.code ?? "";
     const body =

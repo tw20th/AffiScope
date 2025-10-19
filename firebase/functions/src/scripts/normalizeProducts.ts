@@ -1,11 +1,12 @@
 // firebase/functions/src/scripts/normalizeProducts.ts
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { getSiteConfig } from "../lib/siteConfig.js";
+import { getPaapiOptionsFromSite } from "../lib/paapiOpts.js";
+import { getItemsOnce, type OfferHit } from "../services/paapi/client.js";
 
 if (getApps().length === 0) initializeApp();
 const db = getFirestore();
-// どちらか一方でOK：下の deepClean で除去するので、この設定は任意。
-// db.settings({ ignoreUndefinedProperties: true });
 
 const GPU_PATTERNS =
   /(gpu|グラボ|グラフィック|rtx|geforce|pcie|gddr|displayport)/i;
@@ -94,17 +95,15 @@ async function main({
     `[normalize] products=${snap.size} refetch=${asinsToRefetch.length} fixes=${fixes.length} noRefetch=${noRefetch}`
   );
 
-  // 3) 必要なら PA-API を lazy import（失敗しても続行）
-  let offers: Record<string, any> = {};
+  // 3) 必要なら PA-API を使用（新クライアント）
+  let offers: Record<string, OfferHit> = {};
   if (!noRefetch && asinsToRefetch.length) {
     try {
-      const mod = await import("../fetchers/amazon/paapi.js");
-      const fetchAmazonOffers: (
-        asins: string[]
-      ) => Promise<Record<string, any>> = (mod as any).fetchAmazonOffers;
-      offers = (await fetchAmazonOffers(asinsToRefetch)) || {};
+      const siteCfg = await getSiteConfig(siteId);
+      const paapiCfg = getPaapiOptionsFromSite(siteCfg || {});
+      offers = await getItemsOnce(asinsToRefetch, paapiCfg);
     } catch (e) {
-      console.warn("[normalize] fetchAmazonOffers skipped due to error:", e);
+      console.warn("[normalize] getItemsOnce skipped due to error:", e);
       offers = {};
     }
   }
@@ -145,7 +144,7 @@ async function main({
     const trust: Record<string, unknown> = {};
     if (of?.merchant) trust.merchant = of.merchant;
     if (of?.offerCount !== undefined) trust.offerCount = of.offerCount;
-    if (of?.warranty) trust.warranty = of.warranty;
+    if ((of as any)?.warranty) trust.warranty = (of as any).warranty; // 型に無くても安全に扱う
     if (Object.keys(trust).length) set.trust = trust;
 
     if (Object.keys(set).length) {

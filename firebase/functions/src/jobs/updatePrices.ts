@@ -3,12 +3,18 @@ import * as functions from "firebase-functions";
 import { defineSecret } from "firebase-functions/params";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
-import { fetchAmazonOffers } from "../fetchers/amazon/paapi.js";
+
 import { getSiteConfig } from "../lib/siteConfig.js";
 import { isStale, computeFreshFor, pickPolicy } from "../lib/staleness.js";
 import { shouldBoostHot } from "../lib/hotBoost.js";
 
+// ★ 新クライアントに統一
+import { getItemsOnce, type OfferHit } from "../services/paapi/client.js";
+import { getPaapiOptionsFromSite } from "../lib/paapiOpts.js";
+
 const REGION = "asia-northeast1";
+
+// Secret Manager の値を環境へマウント（client.ts は env を参照）
 const AMAZON_ACCESS_KEY = defineSecret("AMAZON_ACCESS_KEY");
 const AMAZON_SECRET_KEY = defineSecret("AMAZON_SECRET_KEY");
 const AMAZON_PARTNER_TAG = defineSecret("AMAZON_PARTNER_TAG");
@@ -58,6 +64,13 @@ function calcBestPrice(offers: Offer[]): BestPrice | undefined {
   };
 }
 
+// 環境値（安全側）
+const CHUNK_SIZE = +(process.env.PAAPI_CHUNK_SIZE || 1);
+const CHUNK_INTERVAL_MS = +(process.env.PAAPI_INTERVAL_MS || 20000);
+const JITTER = +(process.env.PAAPI_JITTER || 0.5);
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function updatePricesForSite(siteId: string, limit = 50) {
   const now = Date.now();
 
@@ -89,11 +102,22 @@ export async function updatePricesForSite(siteId: string, limit = 50) {
     return { siteId, targets: 0, updated: 0 };
   }
 
+  // サイトごとの PA-API 設定
   const siteCfg = await getSiteConfig(siteId);
-  const partnerTag =
-    siteCfg?.affiliate?.amazon?.partnerTag || process.env.AMAZON_PARTNER_TAG;
+  const paapiCfg = getPaapiOptionsFromSite(siteCfg || {});
 
-  const offersMap = await fetchAmazonOffers(asins, { partnerTag });
+  // まとめて叩く（チャンク＋インターバル）
+  const offersMap: Record<string, OfferHit> = {};
+  for (let i = 0; i < asins.length; i += CHUNK_SIZE) {
+    const chunk = asins.slice(i, i + CHUNK_SIZE);
+    const res = await getItemsOnce(chunk, paapiCfg);
+    Object.assign(offersMap, res);
+
+    if (i + CHUNK_SIZE < asins.length) {
+      const wait = CHUNK_INTERVAL_MS * (1 + (Math.random() * 2 - 1) * JITTER);
+      await sleep(Math.ceil(wait));
+    }
+  }
 
   let updated = 0;
   const batch = db.batch();
@@ -188,14 +212,17 @@ export const scheduledUpdatePrices = functions
     memory: "512MB",
   })
   .region(REGION)
-  .pubsub.schedule("every 60 minutes")
+  .pubsub.schedule("every 180 minutes") // ← 3時間に1回
   .timeZone("Asia/Tokyo")
   .onRun(async () => {
     const sites = await db.collection("sites").get();
+    // FOCUS_SITE_ID があればそれ以外をスキップ
     for (const sd of sites.docs) {
       const sId = sd.id;
+      if (process.env.FOCUS_SITE_ID && sId !== process.env.FOCUS_SITE_ID)
+        continue;
       try {
-        const res = await updatePricesForSite(sId, 50);
+        const res = await updatePricesForSite(sId, 25); // ← 1回の対象も控えめ
         console.log("[scheduledUpdatePrices] result", res);
       } catch (e) {
         console.error("[scheduledUpdatePrices] failed", sId, e);
@@ -211,13 +238,23 @@ export const runUpdatePrices = functions
   })
   .region(REGION)
   .https.onRequest(async (req, res) => {
+    const allow = String(
+      process.env.ALLOW_MANUAL_QUEUE_RUN || ""
+    ).toLowerCase();
+    if (!(allow === "1" || allow === "true" || allow === "yes")) {
+      res.status(403).json({
+        ok: false,
+        error: "manual price update is disabled in safe mode",
+      });
+      return;
+    }
     try {
       const siteId = String(req.query.siteId || "").trim();
       if (!siteId)
         return void res
           .status(400)
           .json({ ok: false, error: "siteId query is required" });
-      const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+      const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 50);
       const result = await updatePricesForSite(siteId, limit);
       res.json({ ok: true, ...result });
     } catch (e: unknown) {

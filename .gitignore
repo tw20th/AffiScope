@@ -63,3 +63,20 @@ coverage/
 
 firebase/functions/shared-types/
 
+firebase/functions/secrets/
+*.secret.json
+
+# build outputs
+apps/web/.next
+apps/web/out
+firebase/functions/dist
+
+# logs & scratch
+*.log
+*-debug.log
+inv_*.json
+
+# local env & secrets (念のため)
+.env*
+firebase/functions/secrets/*
+firebase/functions/gsc_sa.json

@@ -16,5 +16,8 @@
   "packageManager": "pnpm@10.0.0",
   "engines": {
     "node": "20.x"
+  },
+  "dependencies": {
+    "@google-cloud/tasks": "^6.2.1"
   }
 }

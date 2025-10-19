@@ -1,7 +1,7 @@
 // firebase/functions/src/scripts/fetchAmazon.ts
 import "dotenv/config";
 import admin from "firebase-admin";
-import { fetchAmazonOffers } from "../fetchers/amazon/paapi.js";
+
 import {
   pruneUndefinedDeep,
   buildAffiliateUrl,
@@ -10,6 +10,9 @@ import {
   makeAiSummary,
 } from "../lib/ingestHelpers.js";
 import { retagBySiteRules } from "../lib/tagging.js";
+import { getSiteConfig } from "../lib/siteConfig.js";
+import { getPaapiOptionsFromSite } from "../lib/paapiOpts.js";
+import { getItemsOnce, type OfferHit } from "../services/paapi/client.js";
 
 const app = admin.apps.length ? admin.app() : admin.initializeApp();
 const db = admin.firestore();
@@ -32,7 +35,7 @@ async function main() {
       .map((s) => s.trim())
       .filter(Boolean);
   } else {
-    // サイト設定から seeds を読む実装に合わせて取得してください
+    // サイト設定から seeds を読んで ASIN を取得
     const siteCfgSnap = await db.collection("sites").doc(siteId).get();
     const seeds = siteCfgSnap.get("seeds.asins") as string[] | undefined;
     asins = (seeds || []).slice(0, 10);
@@ -43,14 +46,23 @@ async function main() {
     return;
   }
 
+  // サイト設定から PA-API オプションを組み立て
+  const siteCfg = await getSiteConfig(siteId);
+  const paapiCfg = getPaapiOptionsFromSite(siteCfg || {});
   const partnerTag =
-    process.env.AMAZON_PARTNER_TAG ||
+    paapiCfg.partnerTag ||
     (await db.collection("sites").doc(siteId).get()).get(
       "affiliate.amazon.partnerTag"
-    );
+    ) ||
+    process.env.AMAZON_PARTNER_TAG;
+
   const now = Date.now();
 
-  const offers = await fetchAmazonOffers(asins, { partnerTag });
+  // 新クライアントで取得
+  const offers = (await getItemsOnce(asins, paapiCfg)) as Record<
+    string,
+    OfferHit
+  >;
 
   const batch = db.batch();
   let updates = 0;
@@ -98,7 +110,7 @@ async function main() {
       url: o.url || affiliateUrl,
       affiliateUrl,
       title: o.title,
-      categoryId: "gaming-chair", // 既定カテゴリ。site の productRules から自動判定するなら差し替え可
+      categoryId: "gaming-chair", // 既定カテゴリ。必要なら site の productRules に合わせて差し替え
       bestPrice,
       priceHistory: priceHistoryEntry.length
         ? admin.firestore.FieldValue.arrayUnion(...priceHistoryEntry)

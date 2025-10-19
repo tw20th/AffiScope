@@ -5,7 +5,7 @@ import OpenAI from "openai";
 import {
   appendPainCTASection,
   buildNoonMessages,
-} from "../lib/prompts/blogPrompts.js";
+} from "../firebase/functions/src/lib/prompts/blogPrompts.js";
 
 const REGION = "asia-northeast1";
 const db = getFirestore();
@@ -53,7 +53,7 @@ async function createBlog(
   slug: string
 ) {
   const openai = getOpenAI();
-  const { sys, user } = buildNoonMessages({ siteId, asin, productName });
+  const { sys, user } = await buildNoonMessages({ siteId, asin, productName });
 
   const resp = await openai.chat.completions.create({
     model: "gpt-4o-mini",
