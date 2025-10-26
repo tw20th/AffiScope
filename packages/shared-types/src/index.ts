@@ -1,4 +1,3 @@
-// packages/shared-types/src/index.ts
 export type OfferSource = "amazon" | "rakuten";
 
 export interface Offer {
@@ -29,7 +28,6 @@ export interface BestPrice {
 }
 
 export interface Product {
-  // ---- 必須（既存） ----
   asin: string;
   title: string;
   brand?: string;
@@ -47,7 +45,7 @@ export interface Product {
   createdAt: number;
   updatedAt: number;
 
-  // 追加（実データ準拠の optional）
+  // optional
   affiliateUrl?: string;
   url?: string;
   inStock?: boolean;
@@ -57,28 +55,34 @@ export interface Product {
 
 export type BlogStatus = "draft" | "published";
 
+/** ★ ここを差し替え */
 export interface Blog {
   slug: string; // = docId
   title: string;
-  imageUrl?: string;
-  relatedAsin?: string;
+  imageUrl?: string | null;
+  /** Unsplash 帰属（あれば表示） */
+  imageCredit?: string | null;
+  imageCreditLink?: string | null;
+
+  relatedAsin?: string | null;
   categoryId?: string;
   content: string; // Markdown
-  summary?: string;
+  summary?: string | null;
   tags: string[];
   status: BlogStatus;
   views: number;
   createdAt: number;
   updatedAt: number;
+  publishedAt?: number | null;
 }
 
 export interface Category {
   id: string; // = docId
-  siteId: string; // 必須
+  siteId: string;
   name: string;
   slug: string;
   parentId?: string;
-  path: string[]; // 先祖 slug の配列（root→...→self）
+  path: string[];
   order: number;
   isActive: boolean;
   createdAt: number;
@@ -86,7 +90,7 @@ export interface Category {
 }
 
 export interface Improvement {
-  id: string; // = docId
+  id: string;
   target: { type: "blog" | "product"; id: string };
   scoreBefore?: number;
   scoreAfter?: number;

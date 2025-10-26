@@ -4,7 +4,7 @@ try {
     await import("dotenv/config");
   }
 } catch {}
-import { getDb } from "./_firestoreClient.js";
+import { getDb } from "../_firestoreClient.js";
 
 async function main() {
   const db = getDb();

@@ -1,4 +1,3 @@
-// apps/web/app/products/page.tsx
 import type { Product, OfferSource } from "@affiscope/shared-types";
 import Link from "next/link";
 import ProductCard from "@/components/products/ProductCard";
@@ -164,7 +163,15 @@ async function fetchProductsByCategoryId(
   return rows;
 }
 
-type SortKey = "price_asc" | "price_desc" | "newest";
+type SortKey =
+  | "price_asc"
+  | "price_desc"
+  | "newest"
+  | "capacity_desc"
+  | "weight_asc"
+  | "output_desc"
+  | "review_desc";
+
 type SP = { category?: string; sort?: SortKey; priced?: string };
 
 export default async function ProductsPage({
@@ -210,6 +217,22 @@ export default async function ProductsPage({
     });
   } else if (sort === "newest") {
     items.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  } else if (sort === "capacity_desc") {
+    const cap = (x: any) => (typeof x?.capacity === "number" ? x.capacity : -1);
+    items.sort((a, b) => cap(b) - cap(a));
+  } else if (sort === "weight_asc") {
+    const w = (x: any) =>
+      typeof x?.weight === "number" ? x.weight : Number.POSITIVE_INFINITY;
+    items.sort((a, b) => w(a) - w(b));
+  } else if (sort === "output_desc") {
+    const out = (x: any) =>
+      typeof x?.outputPower === "number" ? x.outputPower : -1;
+    items.sort((a, b) => out(b) - out(a));
+  } else if (sort === "review_desc") {
+    const score = (x: any) =>
+      (typeof x?.reviewAverage === "number" ? x.reviewAverage : 0) *
+      Math.log1p(typeof x?.reviewCount === "number" ? x.reviewCount : 0);
+    items.sort((a, b) => score(b) - score(a));
   }
 
   const lastUpdated = items.reduce<number>((max, p) => {
@@ -276,6 +299,7 @@ export default async function ProductsPage({
       <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border bg-white px-4 py-2 text-sm">
         <div className="flex items-center gap-2">
           <span className="opacity-70">表示順:</span>
+
           <Link
             href={href({ sort: "price_asc" })}
             className={`rounded px-2 py-1 ${
@@ -303,6 +327,47 @@ export default async function ProductsPage({
             }`}
           >
             新着順
+          </Link>
+
+          <Link
+            href={href({ sort: "capacity_desc" })}
+            className={`rounded px-2 py-1 ${
+              sort === "capacity_desc"
+                ? "bg-gray-100 font-medium"
+                : "hover:underline"
+            }`}
+          >
+            大容量順
+          </Link>
+          <Link
+            href={href({ sort: "weight_asc" })}
+            className={`rounded px-2 py-1 ${
+              sort === "weight_asc"
+                ? "bg-gray-100 font-medium"
+                : "hover:underline"
+            }`}
+          >
+            軽さ優先
+          </Link>
+          <Link
+            href={href({ sort: "output_desc" })}
+            className={`rounded px-2 py-1 ${
+              sort === "output_desc"
+                ? "bg-gray-100 font-medium"
+                : "hover:underline"
+            }`}
+          >
+            急速充電
+          </Link>
+          <Link
+            href={href({ sort: "review_desc" })}
+            className={`rounded px-2 py-1 ${
+              sort === "review_desc"
+                ? "bg-gray-100 font-medium"
+                : "hover:underline"
+            }`}
+          >
+            レビュー順
           </Link>
         </div>
 

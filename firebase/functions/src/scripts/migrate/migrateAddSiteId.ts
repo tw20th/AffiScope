@@ -4,7 +4,7 @@ try {
     await import("dotenv/config");
   }
 } catch {}
-import { getDb } from "./_firestoreClient.js";
+import { getDb } from "../_firestoreClient.js";
 
 const SITE_ID = process.env.SITE_ID ?? "affiscope";
 

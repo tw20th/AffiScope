@@ -7,7 +7,7 @@ try {
 
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { updatePricesForSite } from "../jobs/updatePrices.js";
+import { updatePricesForSite } from "../jobs/products/updatePrices.js";
 
 // Firebase Admin 初期化
 if (getApps().length === 0) initializeApp();

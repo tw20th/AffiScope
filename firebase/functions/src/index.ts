@@ -1,4 +1,4 @@
-/* env (ローカルのみ) */
+/* env (local only) */
 (async () => {
   try {
     if (process.env.FUNCTIONS_EMULATOR || !process.env.K_SERVICE) {
@@ -14,74 +14,56 @@ if (getApps().length === 0) initializeApp();
 
 const REGION = "asia-northeast1";
 
-/* Healthcheck */
-export const health = functions
-  .region(REGION)
-  .https.onRequest((_req, res) => res.status(200).send("ok"));
+/* ---- Health ---- */
+export const health = functions.region(REGION).https.onRequest((_req, res) => {
+  res.status(200).send("ok");
+});
 
-/* ---- HTTP ---- */
+/* ---- HTTP（計測/運用系） ---- */
 export { trackClick } from "./http/trackClick.js";
-export { debugSiteInventory, runSeedQueue } from "./http/queueTools.js";
-export { debugRateLimits } from "./http/rateDebug.js";
 
-/* ---- Jobs / Queues ---- */
-export {
-  scheduledDiscoverProducts,
-  runDiscoverNow,
-} from "./jobs/discoverProducts.js";
+/* ---- Rakuten: 手動ツール（HTTPトリガ） ---- */
+export { runSeedRakuten, runUpdateRakuten } from "./http/rakutenTools.js";
+export { runRakutenIngestNow } from "./jobs/products/scheduledRakutenIngest.js";
+export { runEnrichRakutenNow } from "./jobs/products/enrichRakuten.js";
 
-export {
-  scheduledProcessAsinQueue,
-  runProcessAsinQueue,
-} from "./jobs/processAsinQueue.js";
+/* ---- Publish Hook ---- */
+export { onPublishBlog } from "./jobs/hooks/publishBlog.js";
 
-export { scheduledUpdatePrices, runUpdatePrices } from "./jobs/updatePrices.js";
-export {
-  runQueueHousekeeping,
-  globalCooldown,
-} from "./jobs/queueHousekeeping.js";
-
-/* ---- Blogs: publish hook ---- */
-export { onPublishBlog } from "./jobs/publishBlog.js";
-
-/* ---- Blogs: daily generator (朝/昼を1ファイルで) ----
-   ※ 新ファイル: ./jobs/scheduledBlogDaily.ts に実装
-*/
+/* ---- Scheduled / Batch ---- */
+export { scheduledDiscoverProducts } from "./jobs/products/discoverProducts.js";
+export { scheduledProcessAsinQueue } from "./jobs/products/processAsinQueue.js";
+export { scheduledUpdatePrices } from "./jobs/products/updatePrices.js";
 export {
   scheduledBlogMorning,
   scheduledBlogNoon,
-} from "./jobs/scheduledBlogDaily.js";
+  scheduledBlogEvening, // ← 追加
+} from "./jobs/content/scheduledBlogDaily.js";
+export { scheduledWeeklyPillar } from "./jobs/content/scheduledWeeklyPillar.js";
+export { scheduledRewriteLowScoreBlogs } from "./jobs/content/scheduledRewriteLowScoreBlogs.js";
+export { scheduledPullGsc } from "./jobs/seo/pullGscQueries.js";
+export { pickAndGenerateDaily } from "./jobs/products/pickAndGenerate.js";
 
-/* ---- Blogs: GSC 連動生成（ファイル名を整理） ----
-   ※ 新ファイル名: ./jobs/seo/generateFromGSC.ts
-   後方互換のため、旧エイリアスもエクスポート
-*/
 export {
-  generateFromGSC,
-  runGenerateFromGscNow,
-  // 旧名の互換エクスポート（既存のcurlやCIを壊さない）
-  generateFromGSC as scheduledBlogFromGSC,
-  runGenerateFromGscNow as runBlogFromGscNow,
-} from "./jobs/seo/generateFromGSC.js";
+  runBuildCatalog,
+  scheduledBuildCatalog,
+} from "./jobs/catalog/buildFromRaw.js";
+export { runApplyCatalogRules } from "./jobs/catalog/httpApplyRules.js";
+export { runApplyCatalogPains } from "./jobs/catalog/httpApplyPains.js";
+export { runGenerateCatalogSummaries } from "./jobs/catalog/httpGenerateSummaries.js";
+export { runBlogDailyNow } from "./jobs/content/scheduledBlogDaily.js";
 
-/* ---- Blogs: リライト ---- */
-export { scheduledRewriteLowScoreBlogs } from "./jobs/scheduledRewriteLowScoreBlogs.js";
+export {
+  runProjectAllSites,
+  runProjectSite,
+} from "./jobs/sites/httpProjectCatalog.js";
 
-/* ---- Blogs: 週次ピラー ---- */
-export { scheduledWeeklyPillar } from "./jobs/scheduledWeeklyPillar.js";
-
-/* ---- GSC 取得 ---- */
-export { scheduledPullGsc, runPullGscNow } from "./jobs/seo/pullGscQueries.js";
-
-/* ---- Pick & Generate（手動運用が残るなら） ----
-   ※ 役割がDailyと被るため縮小/廃止候補だが、
-      後方互換のため当面は残す
-*/
-export { pickAndGenerateDaily } from "./jobs/pickAndGenerate.js";
+/* ---- Rakuten: スケジュール ---- */
+export { scheduledRakutenIngest } from "./jobs/products/scheduledRakutenIngest.js";
+export { scheduledEnrichRakuten } from "./jobs/products/enrichRakuten.js";
 
 /* ---- 補助スケジュール ---- */
-import { requeueDeadLetters } from "./scripts/retryDeadLetter.js";
-
+import { requeueDeadLetters } from "./scripts/ops/retryDeadLetter.js";
 export const scheduledEnqueueStale = functions
   .region(REGION)
   .pubsub.schedule("every 60 minutes")
@@ -93,7 +75,7 @@ export const scheduledEnqueueStale = functions
       return;
     }
     const { enqueueStaleBySite } = await import(
-      "./scripts/enqueueStaleProducts.js"
+      "./scripts/ops/enqueueStaleProducts.js"
     );
     await enqueueStaleBySite(focus, 800);
   });
@@ -106,20 +88,7 @@ export const scheduledRetryDeadLetters = functions
     await requeueDeadLetters(1000);
   });
 
-/* ---- env dump ---- */
-export const envDump = functions.region(REGION).https.onRequest((_req, res) => {
-  res.json({
-    QUEUE_BATCH_SIZE: process.env.QUEUE_BATCH_SIZE,
-    PAAPI_CHUNK_SIZE: process.env.PAAPI_CHUNK_SIZE,
-    PAAPI_INTERVAL_MS: process.env.PAAPI_INTERVAL_MS,
-    PAAPI_RETRIES: process.env.PAAPI_RETRIES,
-    PAAPI_BACKOFF_BASE: process.env.PAAPI_BACKOFF_BASE,
-    PAAPI_JITTER: process.env.PAAPI_JITTER,
-    PAAPI_COOLDOWN_MS: process.env.PAAPI_COOLDOWN_MS,
-    PAAPI_TPS: process.env.PAAPI_TPS,
-    PAAPI_BURST: process.env.PAAPI_BURST,
-    PAAPI_TPD: process.env.PAAPI_TPD,
-    FOCUS_SITE_ID: process.env.FOCUS_SITE_ID,
-    ALLOW_MANUAL_QUEUE_RUN: process.env.ALLOW_MANUAL_QUEUE_RUN,
-  });
-});
+import { getFirestore } from "firebase-admin/firestore";
+const db = getFirestore();
+/** Firestore に undefined を書かない（先日の capacity.mAh エラー対策） */
+db.settings({ ignoreUndefinedProperties: true });

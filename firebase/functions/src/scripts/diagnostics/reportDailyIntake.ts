@@ -1,4 +1,3 @@
-// firebase/functions/src/scripts/reportDailyIntake.ts
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { parseArgs } from "node:util";

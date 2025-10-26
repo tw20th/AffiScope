@@ -1,17 +1,15 @@
+// firebase/functions/src/jobs/seo/generateFromGSC.ts
 import * as functions from "firebase-functions";
 import { getFirestore } from "firebase-admin/firestore";
 import { getApps, initializeApp } from "firebase-admin/app";
 import OpenAI from "openai";
-import { appendPainCTASection } from "../lib/prompts/blogPrompts.js";
+import { appendPainCTASection } from "../../lib/content/prompts/blogPrompts.js";
 
 if (getApps().length === 0) initializeApp();
 const db = getFirestore();
 const REGION = "asia-northeast1";
 
-/* ===============================
-   型
-=============================== */
-
+/* ====== 型 ====== */
 type SeoRow = {
   query: string;
   clicks?: number;
@@ -19,14 +17,6 @@ type SeoRow = {
   ctr?: number;
   position?: number;
 };
-
-type SiteDoc = {
-  siteId: string;
-  displayName?: string;
-  features?: { blogs?: boolean };
-  categoryPreset?: string[];
-};
-
 type ProductDoc = {
   asin: string;
   siteId: string;
@@ -37,11 +27,7 @@ type ProductDoc = {
   imageUrl?: string | null;
   categoryId?: string;
   tags?: string[];
-  specs?: {
-    features?: string[];
-    material?: string;
-    dimensions?: any;
-  };
+  specs?: { features?: string[]; material?: string; dimensions?: any };
   offers?: Array<{
     source: string;
     price: number;
@@ -53,10 +39,7 @@ type ProductDoc = {
   createdAt?: number;
 };
 
-/* ===============================
-   小ユーティリティ
-=============================== */
-
+/* ====== util ====== */
 function slugifyKeyword(kw: string) {
   return kw
     .toLowerCase()
@@ -66,20 +49,15 @@ function slugifyKeyword(kw: string) {
 function todayYmd() {
   return new Date().toISOString().slice(0, 10).replace(/-/g, "");
 }
-
-/** 8〜15位を加点して“あと一歩”を拾う */
 function scoreRow(r: SeoRow) {
-  const imp = Number(r.impressions || 0);
-  const ctr = Number(r.ctr || 0);
-  const pos = Number(r.position || 0);
+  const imp = +r.impressions! || 0;
+  const ctr = +r.ctr! || 0;
+  const pos = +r.position! || 0;
   const posBoost = pos > 7 && pos < 16 ? 1.2 : 1.0;
   return imp * (1 - ctr) * posBoost;
 }
 
-/* ===============================
-   GSC ターゲット選定（relaxed対応）
-=============================== */
-
+/* ====== GSC pick ====== */
 async function pickGscTargets(
   siteId: string,
   max = 3,
@@ -91,27 +69,19 @@ async function pickGscTargets(
     .collection("seo")
     .doc("latest")
     .get();
-
   const rows = ((latest.data()?.rows as SeoRow[]) || []).filter(Boolean);
   if (!rows.length) return [];
-
   const { minImp = 50, maxCtr = 0.12, minPos = 5, maxPos = 29 } = opts || {};
-
   const filtered = rows.filter((r) => {
-    const imp = Number(r.impressions || 0);
-    const ctr = Number(r.ctr || 0);
-    const pos = Number(r.position || 0);
+    const imp = +r.impressions! || 0;
+    const ctr = +r.ctr! || 0;
+    const pos = +r.position! || 0;
     return imp >= minImp && ctr <= maxCtr && pos >= minPos && pos <= maxPos;
   });
-
-  const sorted = filtered.sort((a, b) => scoreRow(b) - scoreRow(a));
-  return sorted.slice(0, max);
+  return filtered.sort((a, b) => scoreRow(b) - scoreRow(a)).slice(0, max);
 }
 
-/* ===============================
-   OpenAI（遅延初期化）
-=============================== */
-
+/* ====== OpenAI lazy ====== */
 let _openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {
   const k = process.env.OPENAI_API_KEY;
@@ -119,39 +89,32 @@ function getOpenAI(): OpenAI {
   return (_openai ??= new OpenAI({ apiKey: k }));
 }
 
-/* ===============================
-   比較表生成：products から上位5件
-=============================== */
-
-/** 軽い正規化＆抽出（mAh / W / 重量 / ポート数） */
+/* ====== products → 比較表（元コードの簡約版） ====== */
 function extractSpecs(p: ProductDoc) {
   const text = [p.title, p.productName, p.name, ...(p.specs?.features || [])]
     .filter(Boolean)
     .join(" / ");
-
-  const mAh = (() => {
-    const m = text.match(/(\d{4,6})\s*mAh/i);
-    return m ? `${m[1]}mAh` : "";
-  })();
-  const watt = (() => {
-    const m = text.match(/(\d{2,3})\s*W/i);
-    return m ? `${m[1]}W` : "";
-  })();
-  const weight = (() => {
-    const m = text.match(/(\d{2,4})\s*g\b/i);
-    return m ? `${m[1]}g` : "";
-  })();
-  const ports = (() => {
-    // “USB-C×2 / 3ポート” のような表現を軽く拾う
-    const m1 = text.match(/USB-?C\s*×?\s*(\d)/i);
-    const m2 = text.match(/([23])\s*ポート/i);
-    return m1?.[1] || m2?.[1] || "";
-  })();
-
-  return { mAh, watt, weight, ports };
+  const mAh =
+    (text.match(/(\d{4,6})\s*mAh/i)?.[1] ?? "") &&
+    `${text.match(/(\d{4,6})\s*mAh/i)![1]}mAh`;
+  const watt =
+    (text.match(/(\d{2,3})\s*W/i)?.[1] ?? "") &&
+    `${text.match(/(\d{2,3})\s*W/i)![1]}W`;
+  const weight =
+    (text.match(/(\d{2,4})\s*g\b/i)?.[1] ?? "") &&
+    `${text.match(/(\d{2,4})\s*g\b/i)![1]}g`;
+  const ports =
+    text.match(/USB-?C\s*×?\s*(\d)/i)?.[1] ||
+    text.match(/([23])\s*ポート/i)?.[1] ||
+    "";
+  return {
+    mAh: mAh || "",
+    watt: watt || "",
+    weight: weight || "",
+    ports: ports || "",
+  };
 }
 
-/** クエリとのゆるい一致でスコアリング */
 function scoreProductForKeyword(p: ProductDoc, keyword: string) {
   const kw = keyword.toLowerCase();
   const hay = [
@@ -164,29 +127,20 @@ function scoreProductForKeyword(p: ProductDoc, keyword: string) {
     .filter(Boolean)
     .join(" / ")
     .toLowerCase();
-
   let s = 0;
   if (hay.includes(kw)) s += 5;
-
-  // 単語分割で部分一致
   kw.split(/\s+/)
     .filter(Boolean)
     .forEach((w) => {
       if (hay.includes(w)) s += 2;
     });
-
-  // 価格がある・最近更新は加点
   if (p.bestPrice?.price) s += 1;
   if ((p.updatedAt || 0) > Date.now() - 30 * 24 * 3600 * 1000) s += 1;
-
-  // “モバイルバッテリー” などジャンル語を軽く加点
   if (/モバイルバッテリー|power\s*bank|usb-?c|type-?c|magsafe/i.test(hay))
     s += 1;
-
   return s;
 }
 
-/** サイト内 products から上位5件を返す */
 async function getTopProductsForKeyword(
   siteId: string,
   keyword: string,
@@ -198,28 +152,20 @@ async function getTopProductsForKeyword(
     .orderBy("updatedAt", "desc")
     .limit(200)
     .get();
-
   const all: ProductDoc[] = snap.docs.map((d) => d.data() as ProductDoc);
   if (!all.length) return [];
-
-  const scored = all
+  return all
     .map((p) => ({ p, s: scoreProductForKeyword(p, keyword) }))
     .filter((x) => x.s > 0)
     .sort((a, b) => b.s - a.s)
     .slice(0, limit)
     .map((x) => x.p);
-
-  return scored;
 }
 
-/** Markdownの比較表を組み立て */
 function buildComparisonTable(products: ProductDoc[]): string {
   if (!products.length) return "";
-
   const header =
-    "| 製品 | 容量 | 最大出力 | ポート | 重量 | 価格 | リンク |\n" +
-    "|---|---:|---:|---|---:|---:|---|\n";
-
+    "| 製品 | 容量 | 最大出力 | ポート | 重量 | 価格 | リンク |\n|---|---:|---:|---|---:|---:|---|\n";
   const rows = products.map((p) => {
     const name = p.title || p.productName || p.name || p.asin;
     const { mAh, watt, weight, ports } = extractSpecs(p);
@@ -233,39 +179,27 @@ function buildComparisonTable(products: ProductDoc[]): string {
     const linkMd = link ? `[Amazon](${link})` : "";
     return `| ${name} | ${mAh} | ${watt} | ${ports} | ${weight} | ${price} | ${linkMd} |`;
   });
-
   return header + rows.join("\n");
 }
 
-/** 生成本文の「## 比較表」セクションを検出して差し込み。無ければ導入直後に追加。 */
 function injectComparisonTable(md: string, tableMd: string): string {
   if (!tableMd.trim()) return md;
-
-  // 既に比較表セクションがある場合は置き換え
   const hasSection = /(^|\n)##\s*比較表\s*$/m.test(md);
   if (hasSection) {
-    // 見出しから次の見出しまでを置き換え
     return md.replace(
       /(##\s*比較表\s*\n)([\s\S]*?)(\n##\s|$)/m,
       (_m, h1, _body, tail) => `${h1}\n${tableMd}\n${tail || ""}`
     );
   }
-
-  // なければ、最初の見出し直後に挿入（導入の後）
   const firstH2 = md.indexOf("\n## ");
-  if (firstH2 > 0) {
+  if (firstH2 > 0)
     return (
       md.slice(0, firstH2) + `\n\n## 比較表\n\n${tableMd}\n` + md.slice(firstH2)
     );
-  }
-  // それも無ければ末尾へ
   return `${md.trim()}\n\n## 比較表\n\n${tableMd}\n`;
 }
 
-/* ===============================
-   GSC更新用プロンプト
-=============================== */
-
+/* ====== プロンプト（既存 buildGscUpdatePrompt を同梱） ====== */
 function buildGscUpdatePrompt(params: {
   siteId: string;
   keyword: string;
@@ -273,14 +207,10 @@ function buildGscUpdatePrompt(params: {
   existingMd?: string | null;
 }) {
   const { siteId, keyword, existingMd, existingTitle } = params;
-
   const sys =
     "あなたは日本語のSEO編集者です。指定キーワードの検索意図（購入前の悩み解決・比較検討）に沿って、過剰表現を避け、E-E-A-Tと内部リンク/CTAを意識したMarkdown記事を生成/改稿してください。リンクURLは本文中に既にあるものを優先、無ければAmazonのみ。";
-
   const base =
-    `サイト: ${siteId}\n` +
-    `狙いクエリ: ${keyword}\n` +
-    `出力要件:\n` +
+    `サイト: ${siteId}\n狙いクエリ: ${keyword}\n出力要件:\n` +
     `- # タイトル（自然にキーワード含有、釣り見出し禁止）\n` +
     `- 導入: 読者の悩み→この記事で分かること→結論(選び方の指針)\n` +
     `- ## 比較表（最低5行｜価格/主要スペック/向いている人）\n` +
@@ -288,38 +218,27 @@ function buildGscUpdatePrompt(params: {
     `- ## おすすめ3選（内部リンク/製品ページへの導線）\n` +
     `- ## FAQ（3問）\n` +
     `- 末尾に「※本ページは広告を含みます」\n`;
-
   if (existingMd && existingMd.trim().length > 0) {
     const user =
       `【既存タイトル】${existingTitle ?? "(no title)"}\n` +
-      `【既存本文（Markdown）】\n${existingMd}\n` +
-      `---\n` +
+      `【既存本文（Markdown）】\n${existingMd}\n---\n` +
       base +
       `- 既存本文をベースに、重複/冗長を削り、最新の構成に整えてください。\n` +
       `- URLやショートコード([[pain ...]])は変更しないでください。\n`;
     return { sys, user };
   }
-
   const user =
     base +
     `- この記事は新規作成です。自然な文体で、箇条書きを活用してください。\n`;
   return { sys, user };
 }
 
-/* ===============================
-   生成＆比較表差し込み → 保存
-=============================== */
-
+/* ====== upsert ====== */
 async function upsertBlogByKeyword(siteId: string, keyword: string) {
   const slug = `gsc-${siteId}-${slugifyKeyword(keyword)}-${todayYmd()}`;
-
-  // 同日slugの重複防止
-  const exists = await db.collection("blogs").doc(slug).get();
-  if (exists.exists) {
+  if ((await db.collection("blogs").doc(slug).get()).exists) {
     return { siteId, keyword, slug, created: 0, reason: "already-exists" };
   }
-
-  // 旧記事（targetKeyword一致）があれば入手
   const prevSnap = await db
     .collection("blogs")
     .where("siteId", "==", siteId)
@@ -327,13 +246,11 @@ async function upsertBlogByKeyword(siteId: string, keyword: string) {
     .orderBy("updatedAt", "desc")
     .limit(1)
     .get();
-
   const prev = prevSnap.docs[0];
   const prevData = prev?.data() as
     | { title?: string; content?: string }
     | undefined;
 
-  // 本文生成
   const { sys, user } = buildGscUpdatePrompt({
     siteId,
     keyword,
@@ -350,19 +267,14 @@ async function upsertBlogByKeyword(siteId: string, keyword: string) {
       { role: "user", content: user },
     ],
   });
-
   let md =
     resp.choices[0]?.message?.content?.trim() ??
     `# ${keyword}｜比較・選び方ガイド`;
 
-  // ← ここが今回の拡張：productsから比較表を自動生成して注入
   const top = await getTopProductsForKeyword(siteId, keyword, 5);
   const table = buildComparisonTable(top);
-  if (table) {
-    md = injectComparisonTable(md, table);
-  }
+  if (table) md = injectComparisonTable(md, table);
 
-  // 悩みCTAを付ける
   const content = await appendPainCTASection(siteId, md);
 
   const now = Date.now();
@@ -394,14 +306,10 @@ async function upsertBlogByKeyword(siteId: string, keyword: string) {
       },
       { merge: false }
     );
-
   return { siteId, keyword, slug, created: 1, compared: top.length };
 }
 
-/* ===============================
-   実行ラッパー（フォールバック & relaxed）
-=============================== */
-
+/* ====== main run for site ====== */
 async function fallbackKeyword(siteId: string): Promise<string | null> {
   const sdoc = await db.collection("sites").doc(siteId).get();
   const pools = (sdoc.data()?.keywordPools || {}) as {
@@ -418,39 +326,32 @@ async function runOnceForSite(
   opts?: { minImp?: number; maxCtr?: number; minPos?: number; maxPos?: number }
 ) {
   const targets = await pickGscTargets(siteId, max, opts);
-
   if (!targets.length) {
-    // GSCが空 or 条件未達のときはキーワードプールで1本生成
     const kw = await fallbackKeyword(siteId);
     if (!kw)
       return {
         siteId,
         picked: 0,
-        results: [] as any[],
-        reason: "no-gsc-no-pool",
+        results: [],
+        reason: "no-gsc-no-pool" as const,
       };
     const one = await upsertBlogByKeyword(siteId, kw);
     return {
       siteId,
       picked: 1,
       results: [one],
-      reason: "fallback-keyword-pool",
+      reason: "fallback-keyword-pool" as const,
     };
   }
-
   const results: any[] = [];
-  for (const r of targets) {
+  for (const r of targets)
     results.push(await upsertBlogByKeyword(siteId, r.query));
-  }
   return { siteId, picked: targets.length, results };
 }
 
-/* ===============================
-   スケジュール & 手動エンドポイント
-=============================== */
-
+/* ====== exports ====== */
 /** 毎朝 07:30 JST：各サイトのGSC上位クエリから最大2件を自動更新/作成（比較表付き） */
-export const scheduledBlogFromGSC = functions
+export const generateFromGSC = functions
   .runWith({ secrets: ["OPENAI_API_KEY"] })
   .region(REGION)
   .pubsub.schedule("30 7 * * *")
@@ -460,27 +361,22 @@ export const scheduledBlogFromGSC = functions
       .collection("sites")
       .where("features.blogs", "==", true)
       .get();
-
     const siteIds = snap.docs
-      .map((d) => (d.data() as SiteDoc).siteId)
+      .map((d) => (d.data() as { siteId?: string }).siteId!)
       .filter(Boolean) as string[];
-
     const results = [];
-    for (const siteId of siteIds) {
-      results.push(await runOnceForSite(siteId, 2));
-    }
+    for (const siteId of siteIds) results.push(await runOnceForSite(siteId, 2));
     return { results };
   });
 
 /** 手動実行（テスト用）: ?siteId=xxx&max=2&relaxed=1 */
-export const runBlogFromGscNow = functions
+export const runGenerateFromGscNow = functions
   .runWith({ secrets: ["OPENAI_API_KEY"] })
   .region(REGION)
-  .https.onRequest(async (req, res): Promise<void> => {
+  .https.onRequest(async (req, res) => {
     try {
       const siteId = String(req.query.siteId || "").trim();
       const max = Math.min(Math.max(Number(req.query.max) || 2, 1), 5);
-
       const relaxed = String(req.query.relaxed || "0") === "1";
       const opts = relaxed
         ? { minImp: 1, maxCtr: 1.0, minPos: 1, maxPos: 100 }
@@ -493,7 +389,7 @@ export const runBlogFromGscNow = functions
       const result = await runOnceForSite(siteId, max, opts);
       res.json({ ok: true, ...result, relaxed });
     } catch (e: any) {
-      console.error("[runBlogFromGscNow] failed", e);
+      console.error("[runGenerateFromGscNow] failed", e);
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });

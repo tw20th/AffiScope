@@ -8,7 +8,6 @@
     "logoUrl": "/logos/powerscope.svg",
     "theme": "dark"
   },
-
   "analytics": {
     "ga4MeasurementId": "G-8P08C0VQE9"
   },
@@ -71,7 +70,13 @@
       "モバイルバッテリー(小型)",
       "UPS単体装置(産業)",
       "インバーター基板",
-      "DIYキット"
+      "DIYキット",
+      "オルタネーター単体",
+      "パネル固定具",
+      "ケーブル単品",
+      "ケース",
+      "防水袋",
+      "カバー"
     ]
   },
   "affiliate": {
@@ -79,19 +84,7 @@
       "region": "jp",
       "marketplace": "www.amazon.co.jp",
       "partnerTag": "tw20th0c-22",
-      "resources": [
-        "Images.Primary.Large",
-        "ItemInfo.Title",
-        "ItemInfo.ByLineInfo",
-        "ItemInfo.Features",
-        "ItemInfo.ProductInfo",
-        "Offers.Summaries.OfferCount",
-        "Offers.Listings.Price",
-        "Offers.Listings.MerchantInfo"
-      ],
-      "tps": 0.2,
-      "burst": 1,
-      "tpdMax": 3000,
+      "resources": ["ItemInfo.Title", "Images.Primary.Large"],
       "refresh": { "offersMins": 180, "catalogHours": 24 }
     }
   },
@@ -241,6 +234,25 @@
       "キャンプ向け 静音 小型 ポータブル電源",
       "在宅ワーク 電源バックアップ ノートPC"
     ]
+  },
+  "rakutenKeywords": [
+    "ポータブル電源 1000Wh",
+    "ポータブル電源 500Wh",
+    "リン酸鉄 ポータブル電源",
+    "ソーラーパネル 200W",
+    "キャンプ 電源 静音",
+    "防災 電源 LFP",
+    "PD 100W 電源"
+  ],
+  "defaultCategoryId": "portable-power",
+  "rakutenCategoryMap": {
+    "ポータブル電源 1000Wh": "portable-power",
+    "ポータブル電源 500Wh": "portable-power",
+    "リン酸鉄 ポータブル電源": "portable-power",
+    "ソーラーパネル 200W": "solar-panel",
+    "キャンプ 電源 静音": "portable-power",
+    "防災 電源 LFP": "portable-power",
+    "PD 100W 電源": "portable-power"
   },
   "createdAt": 0,
   "updatedAt": 0

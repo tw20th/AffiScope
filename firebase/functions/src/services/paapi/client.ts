@@ -1,7 +1,7 @@
 // firebase/functions/src/services/paapi/client.ts
 import paapi5sdk from "paapi5-nodejs-sdk";
-import { withRetry } from "../../lib/retry.js";
-import { leaseToken } from "../../lib/paapiRateLimiter.js";
+import { withRetry } from "../../lib/infra/retry.js";
+import { leaseToken } from "../../lib/infra/paapiRateLimiter.js";
 
 export type Marketplace =
   | "JP"

@@ -1,8 +1,8 @@
-// apps/web/app/blog/[slug]/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getServerSiteId } from "@/lib/site-server";
 import { fetchBlogBySlug, fetchBestPrice } from "@/lib/queries";
+import Image from "next/image";
 
 import PainRail from "@/components/pain/PainRail";
 import { loadPainRules } from "@/lib/pain-helpers";
@@ -176,6 +176,9 @@ export default async function BlogDetail({
   ).replace(/\/$/, "");
   const canonical = `${siteUrl}/blog/${blog.slug}`;
 
+  const imageCredit = (blog as any).imageCredit ?? null;
+  const imageCreditLink = (blog as any).imageCreditLink ?? null;
+
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
       {/* breadcrumb */}
@@ -240,6 +243,46 @@ export default async function BlogDetail({
         )}
       </header>
 
+      {/* ★ 追加: ヒーロー画像＋Unsplash帰属（next/image 版） */}
+      {blog.imageUrl ? (
+        <figure className="mt-5 overflow-hidden rounded-2xl border bg-white">
+          <div className="relative w-full aspect-[16/9]">
+            <Image
+              src={blog.imageUrl}
+              alt=""
+              fill
+              priority
+              sizes="(max-width: 768px) 100vw, 768px"
+              className="object-cover"
+            />
+          </div>
+
+          {/* Unsplash 帰属（あれば表示） */}
+          {imageCredit && imageCreditLink ? (
+            <figcaption className="px-4 py-2 text-xs text-gray-500">
+              Photo by{" "}
+              <a
+                href={imageCreditLink}
+                target="_blank"
+                rel="noopener nofollow"
+                className="underline"
+              >
+                {imageCredit}
+              </a>{" "}
+              on{" "}
+              <a
+                href="https://unsplash.com"
+                target="_blank"
+                rel="noopener nofollow"
+                className="underline"
+              >
+                Unsplash
+              </a>
+            </figcaption>
+          ) : null}
+        </figure>
+      ) : null}
+
       {/* 関連商品CTA（あれば） */}
       {bestPrice && blog.relatedAsin && (
         <div className="mt-4 rounded-xl border bg-white p-4 text-sm">
@@ -255,7 +298,13 @@ export default async function BlogDetail({
             {fmt(bestPrice.updatedAt)}）
           </div>
           <a
-            href={outUrl(blog.relatedAsin, bestPrice.url, "blog")}
+            href={
+              blog.relatedAsin
+                ? `/out/${encodeURIComponent(
+                    blog.relatedAsin
+                  )}?to=${encodeURIComponent(bestPrice.url)}&src=blog`
+                : undefined
+            }
             target="_blank"
             rel="noopener noreferrer sponsored"
             className="inline-block rounded-lg border px-4 py-2 font-medium hover:shadow-sm"
@@ -304,7 +353,9 @@ export default async function BlogDetail({
           {bestPrice && blog.relatedAsin && (
             <li>
               <a
-                href={outUrl(blog.relatedAsin, bestPrice.url, "blog_bottom")}
+                href={`/out/${encodeURIComponent(
+                  blog.relatedAsin
+                )}?to=${encodeURIComponent(bestPrice.url)}&src=blog_bottom`}
                 target="_blank"
                 rel="noopener noreferrer sponsored"
                 className="underline"

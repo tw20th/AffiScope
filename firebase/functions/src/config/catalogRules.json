@@ -1,0 +1,26 @@
+[
+  {
+    "label": "大容量(20000mAh+)",
+    "conditions": [{ "field": "capacity.mAh", "op": ">=", "value": 20000 }],
+    "tags": ["大容量"],
+    "category": "power-bank"
+  },
+  {
+    "label": "PD急速(30W+)",
+    "conditions": [{ "field": "outputPower", "op": ">=", "value": 30 }],
+    "tags": ["PD対応", "急速充電"],
+    "category": null
+  },
+  {
+    "label": "軽量(200g以下)",
+    "conditions": [{ "field": "weight", "op": "<=", "value": 200 }],
+    "tags": ["軽量"],
+    "category": null
+  },
+  {
+    "label": "USB-C対応",
+    "conditions": [{ "field": "hasTypeC", "op": "==", "value": true }],
+    "tags": ["USB-C"],
+    "category": null
+  }
+]

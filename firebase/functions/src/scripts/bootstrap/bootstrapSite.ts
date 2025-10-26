@@ -18,10 +18,13 @@ try {
 
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { db } from "../lib/db.js";
+import { db } from "../../lib/infra/db.js";
 
-import { enqueueAsins, discoverForSite } from "../jobs/discoverProducts.js";
-import { searchAmazonItems } from "../fetchers/amazon/search.js";
+import {
+  enqueueAsins,
+  discoverForSite,
+} from "../../jobs/products/discoverProducts.js";
+import { searchAmazonItems } from "../../fetchers/amazon/search.js";
 
 // ---------- utils ----------
 type Condition =

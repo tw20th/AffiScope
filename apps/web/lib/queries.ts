@@ -154,6 +154,10 @@ export type BlogRow = {
   title: string;
   summary?: string | null;
   imageUrl?: string | null;
+  /** ★ 追加: Unsplash 帰属 */
+  imageCredit?: string | null;
+  imageCreditLink?: string | null;
+
   publishedAt?: number;
   updatedAt?: number;
   views?: number;
@@ -179,6 +183,8 @@ export async function fetchBlogs(
     title: vStr(d.fields, "title") ?? "(no title)",
     summary: vStr(d.fields, "summary") ?? null,
     imageUrl: vStr(d.fields, "imageUrl") ?? null,
+    imageCredit: vStr(d.fields, "imageCredit") ?? null, // ★ 追加
+    imageCreditLink: vStr(d.fields, "imageCreditLink") ?? null, // ★ 追加
     publishedAt: vNum(d.fields, "publishedAt") ?? undefined,
     updatedAt: vNum(d.fields, "updatedAt") ?? undefined,
     views: vNum(d.fields, "views") ?? 0,
@@ -197,6 +203,10 @@ export async function fetchBlogBySlug(slug: string) {
     title: vStr(f, "title") ?? "(no title)",
     content: vStr(f, "content") ?? "",
     imageUrl: vStr(f, "imageUrl") ?? undefined,
+    /** ★ 追加: Unsplash 帰属 */
+    imageCredit: vStr(f, "imageCredit") ?? null,
+    imageCreditLink: vStr(f, "imageCreditLink") ?? null,
+
     summary: vStr(f, "summary") ?? undefined,
     siteId: vStr(f, "siteId") ?? "",
     updatedAt: vNum(f, "updatedAt") ?? undefined,
@@ -213,6 +223,7 @@ export async function fetchBestPrice(asin: string) {
   const url = vStr(f, "bestPrice.url");
   const source = vStr(f, "bestPrice.source") as
     | "amazon"
+    | "rakuten"
     | "rakuten"
     | undefined;
   const updatedAt = vNum(f, "bestPrice.updatedAt");

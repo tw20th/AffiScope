@@ -1,8 +1,8 @@
 // firebase/functions/src/scripts/normalizeProducts.ts
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { getSiteConfig } from "../lib/siteConfig.js";
-import { getPaapiOptionsFromSite } from "../lib/paapiOpts.js";
+import { getSiteConfig } from "../lib/sites/siteConfig.js";
+import { getPaapiOptionsFromSite } from "../lib/vendors/paapi/paapiOpts.js";
 import { getItemsOnce, type OfferHit } from "../services/paapi/client.js";
 
 if (getApps().length === 0) initializeApp();

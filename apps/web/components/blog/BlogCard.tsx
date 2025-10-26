@@ -9,7 +9,9 @@ export type BlogCardProps = {
   summary?: string | null;
   content?: string | null; // フォールバック用（任意）
   imageUrl?: string | null;
-  /** 追加: 公開日時（なければ updatedAt を出す） */
+  imageCredit?: string | null; // ★ 追加
+  imageCreditLink?: string | null; // ★ 追加
+  /** 公開日時（なければ updatedAt を出す） */
   publishedAt?: number | null;
   updatedAt?: number | null;
 };
@@ -20,6 +22,8 @@ export default function BlogCard({
   summary,
   content,
   imageUrl,
+  imageCredit,
+  imageCreditLink,
   publishedAt,
   updatedAt,
 }: BlogCardProps) {
@@ -46,6 +50,17 @@ export default function BlogCard({
         <div className="relative h-20 w-28 shrink-0 overflow-hidden rounded-xl bg-gray-50">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={imageUrl} alt="" className="h-full w-full object-cover" />
+          {imageCredit && imageCreditLink ? (
+            <a
+              href={imageCreditLink}
+              target="_blank"
+              rel="noopener nofollow"
+              className="absolute bottom-1 right-1 rounded bg-black/50 px-1.5 py-0.5 text-[10px] text-white"
+              title={`Photo by ${imageCredit} on Unsplash`}
+            >
+              Unsplash
+            </a>
+          ) : null}
         </div>
       ) : null}
 

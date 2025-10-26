@@ -1,8 +1,8 @@
 import paapi5sdk from "paapi5-nodejs-sdk";
-import { withRetry } from "../../lib/retry.js";
+import { withRetry } from "../../lib/infra/retry.js";
 // （適応リミッタは note 用に残してOK。スロット取得は Firestore の leaseToken で行う）
-import { adaptivePaapiLimiter as limiter } from "../../lib/adaptiveLimiter.js";
-import { leaseToken } from "../../lib/paapiRateLimiter.js";
+import { adaptivePaapiLimiter as limiter } from "../../lib/infra/adaptiveLimiter.js";
+import { leaseToken } from "../../lib/infra/paapiRateLimiter.js";
 
 type MarketplaceCode =
   | "JP"

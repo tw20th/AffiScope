@@ -1,0 +1,15 @@
+# ルートの巨大物はまるっと無視（monorepo想定）
+../.git
+../.github
+../.next
+../apps
+../packages
+../node_modules
+../.turbo
+../.pnpm-store
+../dist
+../build
+
+# functions 直下でも src などは不要（distのみ送る運用なら任意）
+functions/src
+functions/node_modules

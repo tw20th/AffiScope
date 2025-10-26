@@ -1,7 +1,7 @@
 // firebase/functions/src/scripts/ops/queueHousekeeping.ts
-import { runQueueHousekeeping } from "../../jobs/queueHousekeeping.js";
+import { runQueueHousekeepingOnce } from "../../jobs/ops/queueHousekeeping.js";
 
 (async () => {
-  await runQueueHousekeeping();
-  console.log("[ops/queueHousekeeping] done");
+  const result = await runQueueHousekeepingOnce();
+  console.log("[ops/queueHousekeeping] done:", result);
 })();

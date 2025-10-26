@@ -5,7 +5,7 @@ try {
   }
 } catch {}
 
-import { db } from "../lib/db.js";
+import { db } from "../../lib/infra/db.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

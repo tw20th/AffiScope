@@ -1,7 +1,7 @@
 // firebase/functions/src/scripts/enqueueStaleProducts.ts
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { isStale, pickPolicy, computeFreshFor } from "../lib/staleness.js";
+import { isStale, pickPolicy, computeFreshFor } from "../../lib/products/staleness.js";
 
 if (getApps().length === 0) initializeApp();
 const db = getFirestore();

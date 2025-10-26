@@ -8,11 +8,11 @@ import {
   buildSlug,
   inferAvailability,
   makeAiSummary,
-} from "../lib/ingestHelpers.js";
-import { retagBySiteRules } from "../lib/tagging.js";
-import { getSiteConfig } from "../lib/siteConfig.js";
-import { getPaapiOptionsFromSite } from "../lib/paapiOpts.js";
-import { getItemsOnce, type OfferHit } from "../services/paapi/client.js";
+} from "../../lib/ingestHelpers.js";
+import { retagBySiteRules } from "../../lib/products/tagging.js";
+import { getSiteConfig } from "../../lib/sites/siteConfig.js";
+import { getPaapiOptionsFromSite } from "../../lib/vendors/paapi/paapiOpts.js";
+import { getItemsOnce, type OfferHit } from "../../services/paapi/client.js";
 
 const app = admin.apps.length ? admin.app() : admin.initializeApp();
 const db = admin.firestore();

@@ -11,3 +11,23 @@ pnpm run build:sites
 firebase/functions/src/scripts/bootstrapSite.ts が.json ファイルの内容を作成します。
 ーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーー
 apps/web/lib/site-catalog.tsにサイトの情報を追加する感じかな？
+
+ーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーー
+## Jobs（定期/イベント）
+
+- content/scheduledBlogDaily.ts … 朝6時=値下げ記事、昼12時=レビュー記事を自動生成して公開
+- content/scheduledRewriteLowScoreBlogs.ts … 品質スコアが低い公開記事を自動リライト
+- content/scheduledWeeklyPillar.ts … 毎週日曜9時、比較/選び方の柱記事を生成
+
+- products/discoverProducts.ts … Amazon検索→ASIN発見→キュー投入（定期/手動）
+- products/processAsinQueue.ts … ASINキューを処理して商品データを作成/更新
+- products/updatePrices.ts … 価格情報を定期更新（定期/手動）
+- products/pickAndGenerate.ts … 指定数のプロダクトからブログ下書きを作成（暫定運用用）
+
+- seo/pullGscQueries.ts … GSC から検索クエリ取得し Firestore に保存（毎日 02:30 / 手動実行可）
+- seo/generateFromGSC.ts … GSC クエリに基づき記事を自動生成（互換エイリアス: scheduledBlogFromGSC）
+
+- hooks/publishBlog.ts … 記事が “published” になったときのフック（ISR再検証、sitemap ping, IndexNow 等）
+- ops/queueHousekeeping.ts … キューのハウスキーピング（stuck解除、試行回数超過 fail、非FOCUS寝かせ、GC操作）
+ーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーー
+

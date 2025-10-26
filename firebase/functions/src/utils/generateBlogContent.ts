@@ -1,4 +1,4 @@
-import { getOpenAI } from "../lib/openai.js";
+import { getOpenAI } from "../lib/infra/openai.js";
 import { buildPrompt } from "./blogPrompt.js";
 
 type GenerateParams = {

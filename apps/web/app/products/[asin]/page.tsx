@@ -45,6 +45,23 @@ const outUrl = (asin: string, url?: string, src: string = "detail") =>
       )}&src=${src}`
     : undefined;
 
+/** 楽天のサムネURLを高解像度に補正 */
+function toHiResImageUrl(src?: string): string | undefined {
+  if (!src) return undefined;
+  try {
+    const u = new URL(src);
+    if (u.hostname.endsWith("thumbnail.image.rakuten.co.jp")) {
+      // リストで 128x128 が来るので、詳細は 800x800 程度に上げる
+      u.searchParams.set("_ex", "800x800");
+      return u.toString();
+    }
+    // r10s など他のCDNはそのまま
+    return src;
+  } catch {
+    return src;
+  }
+}
+
 /* ---------- メタデータ（SEO） ---------- */
 export async function generateMetadata({
   params,
@@ -106,6 +123,9 @@ export default async function ProductDetailPage({
     process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.chairscope.com"
   ).replace(/\/$/, "");
   const canonical = `${siteUrl}/products/${product.asin}`;
+
+  // ★ 画像URLを高解像度に
+  const hiResImg = toHiResImageUrl(product.imageUrl);
 
   return (
     <main className="mx-auto max-w-6xl p-6">
@@ -170,13 +190,16 @@ export default async function ProductDetailPage({
       <section className="grid gap-6 md:grid-cols-2">
         <div className="rounded-2xl border bg-white p-2">
           <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-50">
-            {product.imageUrl ? (
+            {hiResImg ? (
               <Image
-                src={product.imageUrl}
+                src={hiResImg}
                 alt={product.title}
                 fill
+                // 画面幅に応じて十分大きいサイズを要求
                 sizes="(max-width: 768px) 100vw, 50vw"
                 className="object-cover"
+                quality={90}
+                priority
               />
             ) : (
               <div className="grid h-full w-full place-items-center text-xs text-gray-400">
@@ -343,7 +366,7 @@ export default async function ProductDetailPage({
         </section>
       )}
 
-      {/* JSON-LD: Product（既存＋canonicalリンク） */}
+      {/* JSON-LD: Product */}
       <link rel="canonical" href={canonical} />
       <script
         type="application/ld+json"
@@ -355,7 +378,7 @@ export default async function ProductDetailPage({
             brand: product.brand
               ? { "@type": "Brand", name: product.brand }
               : undefined,
-            image: product.imageUrl,
+            image: hiResImg ?? product.imageUrl,
             sku: product.asin,
             url: canonical,
             offers: product.bestPrice

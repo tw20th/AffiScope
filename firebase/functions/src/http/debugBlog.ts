@@ -7,7 +7,7 @@ import {
   buildMorningMessages as buildMorning,
   buildNoonMessages as buildNoon,
   appendPainCTASection,
-} from "../lib/prompts/blogPrompts.js";
+} from "../lib/content/prompts/blogPrompts.js";
 
 if (getApps().length === 0) initializeApp();
 const db = getFirestore();

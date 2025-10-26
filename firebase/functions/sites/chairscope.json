@@ -44,17 +44,29 @@
   ],
   "productRules": {
     "categoryId": "gaming-chair",
-    "includeKeywords": ["チェア", "椅子", "chair"],
+    "includeKeywords": ["チェア", "椅子", "chair", "ゲーミングチェア"],
     "excludeKeywords": [
       "替えカバー",
-      "キャスター",
-      "クッション単品",
+      "チェアカバー",
+      "着せ替え",
+      "カバー",
+      "クッション",
       "座布団",
+      "シート",
+      "カーシート",
+      "車用",
+      "アームレスト",
+      "肘置き",
+      "肘掛け",
+      "キャスター",
+      "床保護マット",
       "マット",
-      "デスク",
+      "足置き単品",
       "フットレスト単品",
       "ヘッドレスト単品",
-      "肘置き単品",
+      "部品",
+      "DIY",
+      "デスク",
       "GPU",
       "グラボ",
       "グラフィック",
@@ -72,19 +84,7 @@
       "region": "jp",
       "marketplace": "www.amazon.co.jp",
       "partnerTag": "tw20th0c-22",
-      "resources": [
-        "Images.Primary.Large",
-        "ItemInfo.Title",
-        "ItemInfo.ByLineInfo",
-        "ItemInfo.Features",
-        "ItemInfo.ProductInfo",
-        "Offers.Summaries.OfferCount",
-        "Offers.Listings.Price",
-        "Offers.Listings.MerchantInfo"
-      ],
-      "tps": 0.2,
-      "burst": 1,
-      "tpdMax": 3000,
+      "resources": ["ItemInfo.Title", "Images.Primary.Large"],
       "refresh": { "offersMins": 180, "catalogHours": 24 }
     }
   },
@@ -183,6 +183,33 @@
       "在宅ワーク 椅子 姿勢 改善"
     ]
   },
+
+  "rakutenKeywords": [
+    "ゲーミングチェア メッシュ",
+    "ゲーミングチェア オットマン",
+    "ゲーミングチェア ランバーサポート",
+    "オフィスチェア メッシュ 通気性",
+    "ゲーミングチェア 姿勢 サポート",
+    "ゲーミングチェア ファブリック",
+    "人間工学 オフィスチェア",
+    "ゲーミング座椅子",
+    "ヘッドレスト 付き チェア",
+    "肘掛け 昇降 チェア"
+  ],
+  "defaultCategoryId": "gaming-chair",
+  "rakutenCategoryMap": {
+    "ゲーミングチェア メッシュ": "gaming-chair",
+    "ゲーミングチェア オットマン": "gaming-chair",
+    "ゲーミングチェア ランバーサポート": "gaming-chair",
+    "オフィスチェア メッシュ 通気性": "gaming-chair",
+    "ゲーミングチェア 姿勢 サポート": "gaming-chair",
+    "ゲーミングチェア ファブリック": "gaming-chair",
+    "人間工学 オフィスチェア": "office-chair",
+    "ゲーミング座椅子": "zaisu",
+    "ヘッドレスト 付き チェア": "office-chair",
+    "肘掛け 昇降 チェア": "office-chair"
+  },
+
   "createdAt": 0,
   "updatedAt": 0
 }

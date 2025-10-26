@@ -1,4 +1,3 @@
-// apps/web/app/blog/page.tsx
 import Link from "next/link";
 import BlogCard from "@/components/blog/BlogCard";
 import { getServerSiteId } from "@/lib/site-server";
@@ -183,7 +182,10 @@ export default async function BlogIndex({
               slug={b.slug}
               title={b.title}
               summary={b.summary}
+              content={(b as any).content ?? undefined}
               imageUrl={b.imageUrl}
+              imageCredit={(b as any).imageCredit ?? null}
+              imageCreditLink={(b as any).imageCreditLink ?? null}
               publishedAt={b.publishedAt}
               updatedAt={b.updatedAt}
             />

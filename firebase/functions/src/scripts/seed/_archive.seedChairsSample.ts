@@ -1,5 +1,5 @@
 // firebase/functions/src/scripts/seedChairsSample.ts
-import { upsertProductSeed } from "../upsert/upsertProduct.js";
+import { upsertProductSeed } from "../../upsert/upsertProduct.js";
 
 async function main() {
   const siteId = process.argv[2] || "chairscope";

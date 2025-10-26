@@ -8,7 +8,6 @@
     "logoUrl": "/logos/chargescope.svg",
     "theme": "light"
   },
-
   "analytics": {
     "ga4MeasurementId": "G-L9D2PEC6DB"
   },
@@ -73,10 +72,15 @@
       "ケーブル単品",
       "ケース",
       "充電スタンド",
+      "ホルダー",
       "電池単体",
+      "乾電池",
       "ソーラーパネル単体",
       "ACアダプタ",
-      "据置 ワイヤレス充電器"
+      "据置 ワイヤレス充電器",
+      "充電器のみ",
+      "スタンドのみ",
+      "カバー"
     ]
   },
   "affiliate": {
@@ -84,19 +88,7 @@
       "region": "jp",
       "marketplace": "www.amazon.co.jp",
       "partnerTag": "tw20th0c-22",
-      "resources": [
-        "Images.Primary.Large",
-        "ItemInfo.Title",
-        "ItemInfo.ByLineInfo",
-        "ItemInfo.Features",
-        "ItemInfo.ProductInfo",
-        "Offers.Summaries.OfferCount",
-        "Offers.Listings.Price",
-        "Offers.Listings.MerchantInfo"
-      ],
-      "tps": 0.2,
-      "burst": 1,
-      "tpdMax": 3000,
+      "resources": ["ItemInfo.Title", "Images.Primary.Large"],
       "refresh": { "offersMins": 180, "catalogHours": 24 }
     }
   },
@@ -228,6 +220,25 @@
       "飛行機 機内持ち込み 基準",
       "MagSafe モバイルバッテリー 選び方"
     ]
+  },
+  "rakutenKeywords": [
+    "モバイルバッテリー 10000mAh PD",
+    "モバイルバッテリー 20000mAh 65W",
+    "モバイルバッテリー 薄型 軽量",
+    "モバイルバッテリー 機内持ち込み",
+    "MagSafe モバイルバッテリー",
+    "ケーブル内蔵 モバイルバッテリー",
+    "USB-C 2ポート モバイルバッテリー"
+  ],
+  "defaultCategoryId": "power-bank",
+  "rakutenCategoryMap": {
+    "モバイルバッテリー 10000mAh PD": "power-bank",
+    "モバイルバッテリー 20000mAh 65W": "power-bank",
+    "モバイルバッテリー 薄型 軽量": "power-bank",
+    "モバイルバッテリー 機内持ち込み": "power-bank",
+    "MagSafe モバイルバッテリー": "power-bank",
+    "ケーブル内蔵 モバイルバッテリー": "power-bank",
+    "USB-C 2ポート モバイルバッテリー": "power-bank"
   },
   "createdAt": 0,
   "updatedAt": 0
