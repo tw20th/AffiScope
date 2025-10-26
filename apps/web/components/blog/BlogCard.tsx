@@ -44,6 +44,10 @@ export default function BlogCard({
       minute: "2-digit",
     });
 
+  const hrefSlug = /%[0-9A-Fa-f]{2}/.test(slug)
+    ? slug
+    : encodeURIComponent(slug);
+
   return (
     <li className="flex gap-4 rounded-2xl border p-4">
       {imageUrl ? (
@@ -66,7 +70,7 @@ export default function BlogCard({
 
       <div className="min-w-0">
         <h2 className="text-lg font-semibold">
-          <Link href={`/blog/${slug}`}>{title}</Link>
+          <Link href={`/blog/${hrefSlug}`}>{title}</Link>
         </h2>
 
         {fallback ? (

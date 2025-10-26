@@ -3,11 +3,11 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const COOKIE_SITE_ID = "siteId";
-const DEFAULT_SITE_ID = "affiscope";
-
+const DEFAULT_SITE_ID = "chairscope"; // ← 実在する siteId に
 const HOST_TO_SITE: Record<string, string> = {
-  "localhost:3000": "affiscope", // ローカルの既定。開発中は適宜 chairscope にしてOK
-  "chairscope.com": "chairscope", // 本番
+  localhost: "chairscope",
+  "localhost:3000": "chairscope",
+  "chairscope.com": "chairscope",
   "www.chairscope.com": "chairscope",
 };
 
@@ -15,38 +15,30 @@ export function middleware(req: NextRequest) {
   const url = new URL(req.url);
   const host = req.headers.get("host") || "";
 
-  // 1) 開発用クエリ (?site=xxx) を最優先
   const siteFromQuery = url.searchParams.get("site")?.trim();
-
-  // 2) 既存 Cookie を次に優先
   const siteFromCookie = req.cookies.get(COOKIE_SITE_ID)?.value?.trim();
-
-  // 3) 本番などは Host マッピングを最後に
   const siteFromHost = HOST_TO_SITE[host];
 
   const siteId =
     siteFromQuery || siteFromCookie || siteFromHost || DEFAULT_SITE_ID;
 
-  // クエリで来た場合はURLから?site=を取り除きつつ、Cookie/ヘッダを付与してリダイレクト
+  // ★ 同一リクエストにヘッダを“注入”してサーバー側で読めるようにする
+  const reqHeaders = new Headers(req.headers);
+  reqHeaders.set("x-site-id", siteId);
+
   if (siteFromQuery) {
+    // ?site=... のときはリダイレクトしてURLを綺麗に
     url.searchParams.delete("site");
     const res = NextResponse.redirect(url);
-    res.cookies.set(COOKIE_SITE_ID, siteId, {
-      path: "/",
-      httpOnly: false,
-      sameSite: "lax",
-    });
+    res.cookies.set(COOKIE_SITE_ID, siteId, { path: "/", sameSite: "lax" });
+    // （レスポンス側にも一応残す）
     res.headers.set("x-site-id", siteId);
     return res;
   }
 
-  // 通常レスポンス：Cookie/ヘッダを常に最新化
-  const res = NextResponse.next();
-  res.cookies.set(COOKIE_SITE_ID, siteId, {
-    path: "/",
-    httpOnly: false,
-    sameSite: "lax",
-  });
+  // 通常レスポンス：Cookieを更新しつつ、リクエストヘッダを上書きして forward
+  const res = NextResponse.next({ request: { headers: reqHeaders } });
+  res.cookies.set(COOKIE_SITE_ID, siteId, { path: "/", sameSite: "lax" });
   res.headers.set("x-site-id", siteId);
   return res;
 }

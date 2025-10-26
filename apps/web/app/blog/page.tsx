@@ -179,6 +179,7 @@ export default async function BlogIndex({
           {filtered.map((b) => (
             <BlogCard
               key={b.slug}
+              // ← ここはそのまま slug を渡す
               slug={b.slug}
               title={b.title}
               summary={b.summary}

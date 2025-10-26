@@ -163,7 +163,18 @@ export default async function BlogDetail({
   const painRules = await loadPainRules(siteId);
 
   const blog = await fetchBlogBySlug(params.slug);
-  if (!blog || blog.siteId !== siteId) notFound();
+  if (!blog) notFound();
+  if (siteId && blog.siteId !== siteId) {
+    if (process.env.NODE_ENV === "production") {
+      notFound();
+    } else {
+      console.warn("[BlogDetail] siteId mismatch", {
+        siteId,
+        blogSiteId: blog.siteId,
+        slug: blog.slug,
+      });
+    }
+  }
 
   const toc = extractToc(blog.content);
   const html = mdToHtml(blog.content);

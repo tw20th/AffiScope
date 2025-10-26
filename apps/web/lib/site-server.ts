@@ -1,5 +1,5 @@
 // apps/web/lib/site-server.ts
-import { headers } from "next/headers";
+import { headers, cookies } from "next/headers"; // ← 追加
 import { domainToSiteId, siteCatalog, type SiteEntry } from "./site-catalog";
 
 function normalizeHost(raw: string): string {
@@ -8,7 +8,6 @@ function normalizeHost(raw: string): string {
 }
 
 function getHostFromRequest(): string | "" {
-  // リクエストスコープ外では headers() が throw する → 安全に握りつぶす
   try {
     const h = headers();
     const hostRaw = h.get("x-forwarded-host") || h.get("host") || "";
@@ -19,14 +18,28 @@ function getHostFromRequest(): string | "" {
 }
 
 export function getServerSiteId(): string {
-  const host = getHostFromRequest();
+  // 1) middleware が付ける優先ヘッダ
+  try {
+    const h = headers();
+    const fromHeader = h.get("x-site-id")?.trim();
+    if (fromHeader) return fromHeader;
+  } catch {}
 
+  // 2) Cookie（middleware も付与する）
+  try {
+    const c = cookies();
+    const fromCookie = c.get("siteId")?.value?.trim();
+    if (fromCookie) return fromCookie;
+  } catch {}
+
+  // 3) Host からの解決
+  const host = getHostFromRequest();
   if (host) {
     const byMap = domainToSiteId[host];
     if (byMap) return byMap;
   }
 
-  // リクエストが無い（ビルド時など）/ マッチしない場合のフォールバック
+  // 4) 最後のフォールバック
   return (
     process.env.DEFAULT_SITE_ID || siteCatalog.sites[0]?.siteId || "chairscope"
   );

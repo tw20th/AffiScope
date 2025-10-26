@@ -193,40 +193,68 @@ export async function fetchBlogs(
   return rows;
 }
 
-/* ブログ本文＋最安（詳細ページ用） */
+// そのままの定義をまるっと置き換え
 export async function fetchBlogBySlug(slug: string) {
-  const doc = await fsGet({ path: `blogs/${slug}` }).catch(() => null);
+  // 入ってくる slug は 例) "chairscope_...%3A1000..." or "chairscope_...:1000..."
+  const safeDecode = (s: string) => {
+    try {
+      return decodeURIComponent(s);
+    } catch {
+      return s;
+    }
+  };
+
+  // 候補を用意：順に試す
+  const raw = slug; // 例) "...%3A1000..." をそのまま
+  const decoded = safeDecode(slug); // 例) "...:1000..."
+  const encoded = encodeURIComponent(decoded); // 例) "...%3A1000..."
+
+  // Firestore REST 呼び分け（fsGet 側は encodeURI なので、ここは文字列をそのまま渡す）
+  const tryPaths = [
+    `blogs/${raw}`, // ドキュメントIDが "%3A" で保存されているケース
+    `blogs/${encoded}`, // ドキュメントIDが ":" を含むケース（URL上は%3Aにする）
+    `blogs/${decoded}`, // 念のため（環境によっては ":" をそのまま解決できる）
+  ];
+
+  let doc: any | null = null;
+  for (const p of tryPaths) {
+    doc = await fsGet({ path: p }).catch(() => null);
+    if (doc) break;
+  }
   if (!doc) return null;
+
   const f = (doc as any).fields;
   return {
-    slug,
+    slug, // ← 受け取った文字列をそのまま返す（呼び出し側が使いやすい）
     title: vStr(f, "title") ?? "(no title)",
     content: vStr(f, "content") ?? "",
     imageUrl: vStr(f, "imageUrl") ?? undefined,
-    /** ★ 追加: Unsplash 帰属 */
-    imageCredit: vStr(f, "imageCredit") ?? null,
-    imageCreditLink: vStr(f, "imageCreditLink") ?? null,
-
     summary: vStr(f, "summary") ?? undefined,
     siteId: vStr(f, "siteId") ?? "",
     updatedAt: vNum(f, "updatedAt") ?? undefined,
     publishedAt: vNum(f, "publishedAt") ?? undefined,
     relatedAsin: vStr(f, "relatedAsin") ?? null,
+    imageCredit: vStr(f, "imageCredit") ?? null,
+    imageCreditLink: vStr(f, "imageCreditLink") ?? null,
   };
 }
 
 export async function fetchBestPrice(asin: string) {
-  const doc = await fsGet({ path: `products/${asin}` }).catch(() => null);
+  // コロン等を含むIDに対応
+  const doc = await fsGet({
+    path: `products/${encodeURIComponent(asin)}`,
+  }).catch(() => null);
   const f = (doc as any)?.fields;
   if (!f) return null;
+
   const price = vNum(f, "bestPrice.price");
   const url = vStr(f, "bestPrice.url");
   const source = vStr(f, "bestPrice.source") as
     | "amazon"
     | "rakuten"
-    | "rakuten"
     | undefined;
   const updatedAt = vNum(f, "bestPrice.updatedAt");
+
   if (
     typeof price === "number" &&
     url &&
