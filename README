@@ -31,3 +31,7 @@ apps/web/lib/site-catalog.tsにサイトの情報を追加する感じかな？
 - ops/queueHousekeeping.ts … キューのハウスキーピング（stuck解除、試行回数超過 fail、非FOCUS寝かせ、GC操作）
 ーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーー
 
+a8の商品を追加するときはこのファイルを実行する。
+
+firebase/functions/src/scripts/tools/syncA8FromFiles.ts
+

@@ -461,6 +461,16 @@ export default async function Page() {
         <h1 className="text-2xl md:text-3xl font-bold">{title}</h1>
         <p className="text-sm opacity-70">{subtitle}</p>
       </header>
+      {/* A8 Offers CTA（追加） */}
+      <div className="mb-6">
+        <Link
+          href="/offers?v=hero"
+          className="inline-flex items-center rounded-xl bg-emerald-600 text-white px-4 py-2 text-sm hover:bg-emerald-700 transition"
+        >
+          家電レンタルおすすめを見る <span className="ml-1">→</span>
+        </Link>
+        <p className="mt-1 text-xs text-gray-500">※ 本ページは広告を含みます</p>
+      </div>
 
       <HeroBadges dataSourceLabel={dataSourceLabel} note={note} />
 

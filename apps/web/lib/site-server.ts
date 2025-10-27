@@ -1,53 +1,33 @@
 // apps/web/lib/site-server.ts
-import { headers, cookies } from "next/headers"; // ← 追加
-import { domainToSiteId, siteCatalog, type SiteEntry } from "./site-catalog";
+import "server-only";
+import { cookies, headers } from "next/headers";
+import { coerceSiteId, siteCatalog, type SiteEntry } from "./site-catalog";
 
-function normalizeHost(raw: string): string {
-  const lower = raw.toLowerCase();
-  return lower.replace(/:\d+$/, "");
-}
-
-function getHostFromRequest(): string | "" {
-  try {
-    const h = headers();
-    const hostRaw = h.get("x-forwarded-host") || h.get("host") || "";
-    return normalizeHost(hostRaw);
-  } catch {
-    return "";
-  }
-}
-
+/**
+ * サーバで使う最終 siteId を決定。
+ * 優先: Cookie(siteId) > Host 推定 > 環境変数/既定
+ */
 export function getServerSiteId(): string {
-  // 1) middleware が付ける優先ヘッダ
-  try {
-    const h = headers();
-    const fromHeader = h.get("x-site-id")?.trim();
-    if (fromHeader) return fromHeader;
-  } catch {}
-
-  // 2) Cookie（middleware も付与する）
-  try {
-    const c = cookies();
-    const fromCookie = c.get("siteId")?.value?.trim();
-    if (fromCookie) return fromCookie;
-  } catch {}
-
-  // 3) Host からの解決
-  const host = getHostFromRequest();
-  if (host) {
-    const byMap = domainToSiteId[host];
-    if (byMap) return byMap;
-  }
-
-  // 4) 最後のフォールバック
-  return (
-    process.env.DEFAULT_SITE_ID || siteCatalog.sites[0]?.siteId || "chairscope"
-  );
+  const ck = cookies().get("siteId")?.value?.trim();
+  const host = headers().get("host");
+  const def =
+    process.env.NEXT_PUBLIC_SITE_ID ||
+    process.env.DEFAULT_SITE_ID ||
+    "chairscope";
+  return coerceSiteId(ck, host, def);
 }
 
+/**
+ * 現在の siteId に対応する SiteEntry を返す（安全フォールバック付）
+ */
 export function getSiteEntry(): SiteEntry {
   const siteId = getServerSiteId();
   const entry = siteCatalog.sites.find((s) => s.siteId === siteId);
-  if (!entry) throw new Error(`Unknown siteId: ${siteId}`);
-  return entry;
+  if (entry) return entry;
+
+  // 開発時は警告して先頭にフォールバック
+  if (process.env.NODE_ENV !== "production") {
+    console.warn("[site] Unknown siteId:", siteId, "-> fallback to first");
+  }
+  return siteCatalog.sites[0]!;
 }

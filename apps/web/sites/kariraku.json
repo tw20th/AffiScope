@@ -1,0 +1,8 @@
+{
+  "siteId": "kariraku",
+  "displayName": "Kariraku（カリラク）",
+  "domain": "localhost",
+  "brand": { "primary": "#16a34a", "accent": "#0ea5e9", "logoUrl": "" },
+  "features": { "blogs": true, "ranking": true },
+  "categoryPreset": ["appliance-rental"]
+}

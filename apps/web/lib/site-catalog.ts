@@ -4,6 +4,9 @@ import fs from "fs";
 import path from "path";
 import { resolveSitesDir } from "./paths";
 
+/* =============================
+ * Types
+ * ============================= */
 export type Brand = {
   primary: string;
   accent: string;
@@ -24,7 +27,7 @@ export type SiteEntry = {
   brand: Brand;
   features: { blogs?: boolean; ranking?: boolean };
   analytics?: SiteAnalytics;
-  /** ← 追加：デフォルトカテゴリ（sites/*.json の categoryPreset を反映） */
+  /** sites/*.json の categoryPreset を反映 */
   categoryPreset?: string[];
 };
 
@@ -33,7 +36,9 @@ export type SiteCatalog = {
   sites: SiteEntry[];
 };
 
-// --------- ローダー ---------
+/* =============================
+ * Loader
+ * ============================= */
 function loadSitesFromJson(): SiteEntry[] {
   const dir = resolveSitesDir();
   const files = fs
@@ -49,8 +54,8 @@ function loadSitesFromJson(): SiteEntry[] {
       const j = JSON.parse(raw) as any;
 
       const entry: SiteEntry = {
-        siteId: j.siteId,
-        displayName: j.displayName ?? j.siteId,
+        siteId: String(j.siteId),
+        displayName: (j.displayName as string) ?? String(j.siteId),
         domain: (j.domain as string) || "localhost",
         brand: {
           primary: j.brand?.primary ?? "#111827",
@@ -60,7 +65,6 @@ function loadSitesFromJson(): SiteEntry[] {
         },
         features: j.features ?? {},
         analytics: j.analytics ?? {},
-        // ★ ここで通す
         categoryPreset: Array.isArray(j.categoryPreset) ? j.categoryPreset : [],
       };
 
@@ -73,21 +77,71 @@ function loadSitesFromJson(): SiteEntry[] {
   return sites;
 }
 
-// --------- 実体（ビルド時に確定）---------
+/* =============================
+ * Catalog (built at startup)
+ * ============================= */
 export const siteCatalog: SiteCatalog = {
   generatedAt: Date.now(),
   sites: loadSitesFromJson(),
 } as const;
 
-// exact match 用に www 有無も吸収したマップ
+/* =============================
+ * Domain → siteId map（www 有無も吸収）
+ * ============================= */
 export const domainToSiteId: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   for (const s of siteCatalog.sites) {
     const canonical = s.domain.toLowerCase();
-    map[canonical] = s.siteId;
     const naked = canonical.replace(/^www\./, "");
-    map[naked] = s.siteId;
-    map[`www.${naked}`] = s.siteId;
+    if (canonical) map[canonical] = s.siteId;
+    if (naked) {
+      map[naked] = s.siteId;
+      map[`www.${naked}`] = s.siteId;
+    }
   }
   return map;
 })();
+
+/* =============================
+ * Helpers（ミドルウェア/サーバー用）
+ * ============================= */
+
+/** 許可サイトIDの集合（未知の siteId を弾く用途に） */
+export const ALLOWED_SITE_IDS = new Set(siteCatalog.sites.map((s) => s.siteId));
+
+/** 先頭のサイトID（フォールバック用） */
+export function getFirstSiteId(): string {
+  return siteCatalog.sites[0]?.siteId ?? "chairscope";
+}
+
+/** Host から siteId を推定（見つからなければ undefined） */
+export function getSiteIdForHost(host?: string | null): string | undefined {
+  if (!host) return undefined;
+  const key = host.toLowerCase();
+  return domainToSiteId[key];
+}
+
+/**
+ * siteId の最終決定（安全版）
+ * 優先順: 明示 siteId（有効なとき） > Host 由来 > DEFAULT/先頭
+ */
+export function coerceSiteId(
+  candidate?: string | null,
+  host?: string | null,
+  defaultSiteId?: string
+): string {
+  // 1) 候補（クエリ/クッキーなど）を優先。ただし許可済みのみ採用
+  if (candidate && ALLOWED_SITE_IDS.has(candidate)) return candidate;
+
+  // 2) ホストから推定
+  const fromHost = getSiteIdForHost(host);
+  if (fromHost && ALLOWED_SITE_IDS.has(fromHost)) return fromHost;
+
+  // 3) 指定の DEFAULT、無ければ先頭
+  const fallback =
+    defaultSiteId && ALLOWED_SITE_IDS.has(defaultSiteId)
+      ? defaultSiteId
+      : getFirstSiteId();
+
+  return fallback;
+}

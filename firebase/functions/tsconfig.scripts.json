@@ -6,7 +6,8 @@
     "target": "ES2022",
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "types": ["node"]
   },
   "include": ["src/scripts/**/*.ts", "src/types/**/*.d.ts"]
 }

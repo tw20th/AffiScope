@@ -1,4 +1,18 @@
 // apps/web/lib/firestore-rest.ts
+
+/* ========= Query types (readonly 対応) ========= */
+export type SimpleWhere = readonly [
+  field: string,
+  op: "==" | "array-contains" | ">" | "<" | ">=" | "<=",
+  value: any
+];
+
+export type SimpleOrderBy =
+  | readonly [field: string, dir?: "asc" | "desc"]
+  | ReadonlyArray<readonly [field: string, dir?: "asc" | "desc"]>
+  | readonly string[];
+
+/* ========= Firestore REST value helpers ========= */
 export type FsValue =
   | { stringValue: string }
   | { integerValue: string }
@@ -117,7 +131,7 @@ export function docIdFromName(name: string): string {
   return i >= 0 ? name.slice(i + 1) : name;
 }
 
-/** runQuery（REST） */
+/* ========= REST: runQuery / get ========= */
 export async function fsRunQuery(params: {
   projectId?: string;
   apiKey?: string;
@@ -126,6 +140,7 @@ export async function fsRunQuery(params: {
     field: string;
     op?:
       | "EQUAL"
+      | "ARRAY_CONTAINS"
       | "GREATER_THAN"
       | "LESS_THAN"
       | "GREATER_THAN_OR_EQUAL"
@@ -238,4 +253,86 @@ export async function fsGet(params: {
     name: doc.name as string,
     fields: doc.fields as Record<string, FsValue>,
   };
+}
+
+/* ========= High-level: fetchCollection ========= */
+export async function fetchCollection<T>(
+  collection: string,
+  q: {
+    where?: ReadonlyArray<SimpleWhere>; // ← readonly OK
+    orderBy?: SimpleOrderBy;
+    limit?: number;
+  } = {}
+): Promise<T[]> {
+  // where 変換（readonly タプル配列をそのまま map）
+  const opMap = {
+    "==": "EQUAL",
+    ">": "GREATER_THAN",
+    "<": "LESS_THAN",
+    ">=": "GREATER_THAN_OR_EQUAL",
+    "<=": "LESS_THAN_OR_EQUAL",
+    "array-contains": "ARRAY_CONTAINS",
+  } as const;
+
+  const where =
+    q.where?.map(([field, op, value]) => ({
+      field,
+      op: opMap[op],
+      value,
+    })) ?? [];
+
+  // orderBy 変換
+  let orderBy: { field: string; direction?: "ASCENDING" | "DESCENDING" }[] = [];
+
+  if (q.orderBy) {
+    if (Array.isArray(q.orderBy)) {
+      // パターンA: ["updatedAt","desc"] もしくは ["updatedAt"]
+      if (
+        q.orderBy.length > 0 &&
+        typeof (q.orderBy as ReadonlyArray<any>)[0] === "string"
+      ) {
+        const f = (q.orderBy as ReadonlyArray<any>)[0] as string;
+        const d = (q.orderBy as ReadonlyArray<any>)[1] as
+          | "asc"
+          | "desc"
+          | undefined;
+        orderBy = [
+          {
+            field: f,
+            direction: (d ?? "desc").toUpperCase() as
+              | "ASCENDING"
+              | "DESCENDING",
+          },
+        ];
+      } else {
+        // パターンB: [ ["a","asc"], ["b","desc"] ]
+        orderBy = (q.orderBy as ReadonlyArray<ReadonlyArray<any>>).map(
+          (pair) => {
+            const f = pair[0] as string;
+            const d = (pair[1] as "asc" | "desc" | undefined) ?? "desc";
+            return {
+              field: f,
+              direction: d.toUpperCase() as "ASCENDING" | "DESCENDING",
+            };
+          }
+        );
+      }
+    }
+  }
+
+  const rows = await fsRunQuery({
+    collection,
+    where,
+    orderBy,
+    limit: q.limit,
+  });
+
+  const out: T[] = [];
+  for (const r of rows) {
+    const obj: any = { id: docIdFromName(r.name) };
+    const fields = r.fields ?? {};
+    for (const k of Object.keys(fields)) obj[k] = fsDecode(fields[k]);
+    out.push(obj as T);
+  }
+  return out;
 }

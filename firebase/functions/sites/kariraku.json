@@ -1,0 +1,32 @@
+{
+  "siteId": "kariraku",
+  "displayName": "Kariraku（カリラク）",
+  "domain": "www.kariraku.com",
+  "brand": {
+    "primary": "#10B981",
+    "accent": "#F59E0B",
+    "logoUrl": "/logos/kariraku.svg",
+    "theme": "light"
+  },
+  "analytics": {
+    "ga4MeasurementId": "G-XXXXXXXX"
+  },
+  "categoryPreset": ["rental", "subscription", "home-appliance"],
+  "features": {
+    "blogs": true,
+    "ranking": true,
+    "dataSource": "a8"
+  },
+  "homeCopy": {
+    "title": "借りて、暮らしをラクにする。",
+    "subtitle": "冷蔵庫・洗濯機・家電のレンタル・サブスクで“買わない暮らし”を提案。",
+    "dataSourceLabel": "A8.net",
+    "note": "本ページは広告を含みます。提携先サービスの一部を紹介しています。"
+  },
+  "seo": {
+    "metaTitle": "Kariraku（カリラク）｜家電レンタル・サブスクで“買わない暮らし”をもっと身近に",
+    "metaDescription": "Kariraku（カリラク）は、冷蔵庫・洗濯機・掃除機などのレンタル・サブスクを毎日自動更新で紹介するメディアです。買わずに使う、新しい暮らし方を提案します。",
+    "ogImage": "/og/kariraku_og.png",
+    "keywords": ["家電レンタル", "サブスク", "暮らし", "Kariraku", "カリラク"]
+  }
+}

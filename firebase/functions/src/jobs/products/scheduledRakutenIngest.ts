@@ -6,7 +6,53 @@ import { defineSecret } from "firebase-functions/params";
 import { searchItems } from "../../services/rakuten/client.js";
 import { mapRakutenToRaw } from "../../services/rakuten/mapRakutenToRaw.js";
 import { shouldKeepRakutenItem } from "../../lib/products/rakutenFilters.js";
+import path from "node:path";
 
+function modelFromName(name: string): string | undefined {
+  const cand = name?.toUpperCase().match(/[A-Z0-9-]{4,}/g);
+  if (!cand) return;
+  const BAD = new Set(["USB", "TYPEC", "TYPE-C", "PD", "QC", "LED"]);
+  return cand.find((c) => !BAD.has(c));
+}
+
+function imageKey(url?: string): string | undefined {
+  if (!url) return;
+  try {
+    const u = new URL(url);
+    return path.basename(u.pathname);
+  } catch {
+    const clean = url.split("?")[0];
+    return clean.split("/").pop();
+  }
+}
+
+function buildDedupeKey(src: {
+  productName: string;
+  imageUrl?: string;
+  jan?: string;
+  ean?: string;
+  modelNumber?: string;
+  asin?: string;
+}) {
+  if (src.asin) return `asin:${src.asin}`;
+  if (src.jan) return `jan:${src.jan}`;
+  if (src.ean) return `ean:${src.ean}`;
+  if (src.modelNumber) return `model:${src.modelNumber}`;
+  const m = modelFromName(src.productName);
+  if (m) return `model:${m}`;
+  const ik = imageKey(src.imageUrl);
+  if (ik) return `img:${ik}`;
+  const norm = src.productName
+    ?.toLowerCase()
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
+  return `title:${norm}`;
+}
+
+function priceOfRakuten(it: any): number {
+  const n = Number(it?.itemPrice);
+  return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
+}
 const REGION = "asia-northeast1";
 
 // Secret Manager: 既に登録済みのものを使用
@@ -143,13 +189,24 @@ async function processOnce(params: {
                 });
             if (keep) filtered.push(it);
           }
-          console.log(
-            `[rakuten][${siteId}] "${keyword}" p${page} kept=${
-              filtered.length
-            }/${got} (skipFilter=${!!skipFilter})`
-          );
 
-          if (filtered.length === 0) {
+          // 同一 dedupeKey の中で最安のみ採用
+          const byKey = new Map<string, any>();
+          for (const it of filtered) {
+            const src = {
+              productName: String(it?.itemName || ""),
+              imageUrl: it?.mediumImageUrls?.[0]?.imageUrl || it?.imageUrl,
+              // 楽天のレスポンスに JAN/型番/ASIN があれば入れてOK（無ければ未使用で可）
+              // jan: it?.jan, ean: it?.ean, modelNumber: it?.modelNumber, asin: it?.asin,
+            };
+            const key = buildDedupeKey(src);
+            const cur = byKey.get(key);
+            if (!cur || priceOfRakuten(it) < priceOfRakuten(cur))
+              byKey.set(key, it);
+          }
+          const deduped = [...byKey.values()];
+
+          if (deduped.length === 0) {
             if (page < pagesPerKeyword) await sleep(Math.max(1000, delayMs));
             continue;
           }
@@ -157,7 +214,7 @@ async function processOnce(params: {
           const batch = db.batch();
           const now = Date.now();
 
-          for (const it of filtered) {
+          for (const it of deduped) {
             const rawDoc = mapRakutenToRaw(siteId, it, now);
             const docId =
               typeof it?.itemCode === "string" && it.itemCode
@@ -170,7 +227,7 @@ async function processOnce(params: {
           }
           await batch.commit();
           console.log(
-            `[rakuten][${siteId}] "${keyword}" p${page} wrote=${filtered.length}`
+            `[rakuten][${siteId}] "${keyword}" p${page} wrote=${deduped.length} (deduped from ${filtered.length})`
           );
 
           if (page < pagesPerKeyword) await sleep(Math.max(1000, delayMs));

@@ -44,6 +44,9 @@ export { scheduledRewriteLowScoreBlogs } from "./jobs/content/scheduledRewriteLo
 export { scheduledPullGsc } from "./jobs/seo/pullGscQueries.js";
 export { pickAndGenerateDaily } from "./jobs/products/pickAndGenerate.js";
 
+export { generateBlogFromOffer } from "./jobs/content/generateBlogFromOffer.js";
+export { scheduledBlogDailyA8 } from "./jobs/content/scheduledBlogDaily.js";
+
 export {
   runBuildCatalog,
   scheduledBuildCatalog,

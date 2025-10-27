@@ -1,0 +1,132 @@
+{
+  "program": {
+    "programId": "s00000026260001",
+    "advertiser": "株式会社トミザワ",
+    "category": ["家電", "レンタル", "サブスク"]
+  },
+  "offer": {
+    "id": "s00000026260001:happyrent",
+    "title": "生活家電レンタル・サブスク『家電レンタルみんなのHappy』",
+    "description": "東京23区と周辺で冷蔵庫・洗濯機・電子レンジなどを30日からレンタル可能。セット利用は配送料・設置・回収まで無料。プロの徹底清掃・消毒、保証期間中の無償交換対応あり。支払いは一括（30日/90日/6ヶ月/1年/2年）またはサブスク（最低6ヶ月）。",
+    "price": 1870,
+    "planType": "subscription",
+    "landingUrl": "https://happyrent.jp/",
+    "affiliateUrl": "https://px.a8.net/svt/ejp?a8mat=XXXX",
+    "images": [],
+    "badges": [
+      "最短30日〜",
+      "設置・回収込み（セット）",
+      "保証つき・交換無料",
+      "東京23区周辺対応"
+    ],
+    "tags": [
+      "レンタル",
+      "サブスク",
+      "家電セット",
+      "冷蔵庫",
+      "洗濯機",
+      "電子レンジ",
+      "一人暮らし",
+      "引っ越し",
+      "短期利用"
+    ],
+    "siteIds": ["kariraku"],
+    "extras": {
+      "reward": "新規サブスクまたはレンタル申込 2100円",
+      "confirmRate": "100%",
+      "lookbackDays": 90,
+      "confirmEta": "約30日",
+      "payment": [
+        "クレジットカード",
+        "Amazon Pay",
+        "PayPay",
+        "コンビニ前払い",
+        "銀行振込"
+      ],
+      "paymentNotes": "サブスクはクレカのみ",
+      "deliveryDays": ["火", "木", "土", "日"],
+      "timeSlot": "時間指定不可（前日におおよその時間連絡）",
+      "areas": [
+        "東京都23区・武蔵野市・調布市・三鷹市・狛江市",
+        "神奈川県 川崎区/幸区/鶴見区",
+        "千葉県北西部 浦安市/松戸市/市川市/船橋市/鎌ヶ谷市/習志野市/千葉市美浜区",
+        "埼玉県南部 和光市/戸田市/蕨市/川口市/草加市/三郷市/八潮市"
+      ],
+      "fees": {
+        "setRental": "対応エリア無料（設置・回収含む）",
+        "singleItem": "13,200円（税込）",
+        "subscriptionInit": "6,600円（税込）"
+      },
+      "campaigns": ["2周年キャンペーン", "ご近所割"],
+      "creatives": [
+        {
+          "materialId": "001",
+          "type": "text",
+          "label": "家電レンタルみんなのHappy",
+          "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G3W9J6+5MMG+5YJRM"
+        },
+        {
+          "materialId": "002",
+          "type": "text",
+          "label": "月1,870円から使える生活家電【家電レンタルみんなのHappy】",
+          "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G3W9J6+5MMG+5YRHE"
+        },
+        {
+          "materialId": "003",
+          "type": "text",
+          "label": "家電は買うより格安レンタル【家電レンタルみんなのHappy】",
+          "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G3W9J6+5MMG+5YZ76"
+        },
+        {
+          "materialId": "005",
+          "type": "banner",
+          "size": "300x250",
+          "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G3W9J6+5MMG+5ZEMP",
+          "imgSrc": "https://www24.a8.net/svt/bgt?aid=251027041974&wid=003&eno=01&mid=s00000026260001005000&mc=1"
+        },
+        {
+          "materialId": "006",
+          "type": "banner",
+          "size": "100x60",
+          "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G3W9J6+5MMG+5ZMCH",
+          "imgSrc": "https://www21.a8.net/svt/bgt?aid=251027041974&wid=003&eno=01&mid=s00000026260001006000&mc=1"
+        },
+        {
+          "materialId": "007",
+          "type": "banner",
+          "size": "120x60",
+          "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G3W9J6+5MMG+5ZU29",
+          "imgSrc": "https://www26.a8.net/svt/bgt?aid=251027041974&wid=003&eno=01&mid=s00000026260001007000&mc=1"
+        },
+        {
+          "materialId": "008",
+          "type": "banner",
+          "size": "300x250",
+          "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G3W9J6+5MMG+601S1",
+          "imgSrc": "https://www29.a8.net/svt/bgt?aid=251027041974&wid=003&eno=01&mid=s00000026260001008000&mc=1"
+        },
+        {
+          "materialId": "009",
+          "type": "banner",
+          "size": "300x250",
+          "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G3W9J6+5MMG+609HT",
+          "imgSrc": "https://www28.a8.net/svt/bgt?aid=251027041974&wid=003&eno=01&mid=s00000026260001009000&mc=1"
+        },
+        {
+          "materialId": "010",
+          "type": "banner",
+          "size": "120x60",
+          "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G3W9J6+5MMG+60H7L",
+          "imgSrc": "https://www24.a8.net/svt/bgt?aid=251027041974&wid=003&eno=01&mid=s00000026260001010000&mc=1"
+        },
+        {
+          "materialId": "019",
+          "type": "banner",
+          "size": "250x250",
+          "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G3W9J6+5MMG+62ENL",
+          "imgSrc": "https://www23.a8.net/svt/bgt?aid=251027041974&wid=003&eno=01&mid=s00000026260001019000&mc=1"
+        }
+      ]
+    }
+  }
+}

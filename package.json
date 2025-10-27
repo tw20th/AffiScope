@@ -11,7 +11,11 @@
     "emulators": "pnpm run prepare:functions && pnpm -C firebase emulators"
   },
   "devDependencies": {
-    "typescript": "^5.3.3"
+    "@types/node": "^24.9.1",
+    "@types/yargs": "^17.0.34",
+    "tsx": "^4.20.6",
+    "typescript": "^5.3.3",
+    "yargs": "^18.0.0"
   },
   "packageManager": "pnpm@10.0.0",
   "engines": {

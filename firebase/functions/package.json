@@ -50,7 +50,12 @@
     "blogs:migrate:rakuten": "tsx -P tsconfig.scripts.json src/scripts/blog/migrateFromRakuten.ts",
     "blogs:normalize": "tsx -P tsconfig.scripts.json src/scripts/blog/normalizeForAffiScope.ts",
     "blogs:fix:siteid": "tsx -P tsconfig.scripts.json src/scripts/blog/fixSiteIdForPowerbanks.ts",
-    "build:sites": "ts-node firebase/functions/src/scripts/buildSiteCatalog.ts"
+    "build:sites": "ts-node firebase/functions/src/scripts/buildSiteCatalog.ts",
+    "report:dupes": "tsx src/scripts/diagnostics/reportDuplicates.ts --site chairscope --limit 50000",
+    "merge:dupes": "tsx src/scripts/fixes/mergeDuplicates.ts --site=chairscope --dry",
+    "a8:sync": "tsx firebase/functions/src/scripts/tools/syncA8FromFiles.ts --dir=content/a8",
+    "a8:sync:dry": "tsx firebase/functions/src/scripts/tools/syncA8FromFiles.ts --dir=content/a8 --dry-run",
+    "a8:sync:clean": "tsx firebase/functions/src/scripts/tools/syncA8FromFiles.ts --dir=content/a8 --archive-missing"
   },
   "dependencies": {
     "@affiscope/shared-schemas": "file:./shared-schemas",
@@ -67,6 +72,7 @@
   "devDependencies": {
     "@types/aws4": "^1.11.6",
     "@types/node": "^20.19.17",
+    "@types/yargs": "^17.0.34",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "dotenv": "^17.2.2",
@@ -74,6 +80,7 @@
     "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.6",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "yargs": "^18.0.0"
   }
 }

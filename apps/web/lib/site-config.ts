@@ -1,3 +1,4 @@
+// apps/web/lib/site-config.ts
 import { getSiteEntry } from "./site-server";
 import type { SiteEntry, SiteAnalytics } from "./site-catalog";
 
@@ -5,18 +6,22 @@ export type SiteConfig = {
   siteId: string;
   title: string;
   description: string;
-  urlOrigin: string; // e.g. https://www.xxx.com
+  urlOrigin: string;
   brandColor: string;
   logoUrl: string;
   theme: "light" | "dark";
-  analytics?: SiteAnalytics; // ← 追加
+  analytics?: SiteAnalytics;
 };
 
 export function getSiteConfig(): SiteConfig {
   const s: SiteEntry = getSiteEntry();
-  const urlOrigin = `https://${s.domain}`;
 
-  // JSON / catalog 側が未設定でも環境変数で代替できるようにフォールバック
+  // ローカル(127.0.0.1/localhost)のときは http、それ以外は https
+  const proto = /(^|\.)localhost$|(^|\.)127\.0\.0\.1$/.test(s.domain)
+    ? "http"
+    : "https";
+  const urlOrigin = `${proto}://${s.domain}`;
+
   const gaFromEntry = s.analytics?.ga4MeasurementId;
   const gaFromEnv = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
   const analytics: SiteAnalytics | undefined =

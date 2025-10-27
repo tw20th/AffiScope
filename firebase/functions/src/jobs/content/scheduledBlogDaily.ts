@@ -20,6 +20,8 @@ import { getBlogEnabledSiteIds } from "../../lib/sites/sites.js";
 // ← 追加：Unsplash クライアント
 import { findUnsplashHero } from "../../services/unsplash/client.js";
 
+import { generateBlogFromOffer } from "./generateBlogFromOffer.js";
+
 const REGION = "asia-northeast1";
 const db = getFirestore();
 const openai = () => getOpenAI();
@@ -177,4 +179,35 @@ export const runBlogDailyNow = functions
 
     const out = await generate(siteId, mode);
     res.json({ ok: true, ...out });
+  });
+
+export const scheduledBlogDailyA8 = functions
+  .region(REGION)
+  .runWith({ secrets: ["OPENAI_API_KEY", "UNSPLASH_ACCESS_KEY"] }) // ← 追加
+  .pubsub.schedule("15 4 * * *")
+  .timeZone("Asia/Tokyo")
+  .onRun(async () => {
+    const snap = await db
+      .collection("offers")
+      .where("siteIds", "array-contains", "kariraku")
+      .where("archived", "==", false)
+      .orderBy("updatedAt", "desc")
+      .limit(10)
+      .get();
+
+    for (const doc of snap.docs) {
+      const offerId = doc.id;
+
+      const exists = await db
+        .collection("blogs")
+        .where("offerId", "==", offerId)
+        .limit(1)
+        .get();
+      if (!exists.empty) continue;
+
+      const out = await generateBlogFromOffer({ offerId, siteId: "kariraku" });
+      return { createdFromOffer: out.slug };
+    }
+
+    return { createdFromOffer: null };
   });
