@@ -1,0 +1,174 @@
+{
+  "program": {
+    "programId": "s00000023591001",
+    "advertiser": "株式会社ゲオ",
+    "category": ["家電", "レンタル"]
+  },
+  "offer": {
+    "id": "s00000023591001:geo-arekore",
+    "title": "カメラ・スマホ・家電を手軽にレンタル！【ゲオあれこれレンタル】",
+    "description": "ゲオが運営する総合レンタルサービス。ネットで注文・自宅へ配送、返却はコンビニでOK。短期（3泊4日〜）・月額レンタル・買えるレンタルに対応。24時間申込、人気家電多数、万一の故障も安心のサポート。",
+    "price": null,
+    "planType": "subscription",
+    "landingUrl": "https://geo-arekore.jp/",
+    "affiliateUrl": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+5Z6WY",
+    "images": [],
+    "badges": [
+      "短期レンタル 3泊4日〜",
+      "月額レンタルあり",
+      "買えるレンタル対応",
+      "コンビニ返却OK",
+      "故障安心（修理費上限2,000円）"
+    ],
+    "tags": [
+      "レンタル",
+      "カメラ",
+      "スマホ",
+      "PC",
+      "家電",
+      "美容家電",
+      "掃除機",
+      "スーツケース"
+    ],
+    "siteIds": ["kariraku"],
+    "extras": {
+      "reward": "レンタル予約5％",
+      "EPC": 21.2,
+      "confirmRate": "65.63%",
+      "lookbackDays": 90,
+      "confirmEta": "約30日",
+      "note": "商品リンクの飛び先は https://geo-arekore.jp/ 内に設定。サイト内の人物画像は使用不可。",
+      "conditions": "WEB予約後30日以内の受け取りが成果。クーポン利用時は値引後金額で確定。",
+      "denials": "虚偽・いたずら・重複・登録不備・返品・キャンセル・規約違反・リスティング違反等。",
+      "policy": "広告表示（PR表記）必須。SNS/Youtube等での自主施策は事前チェック必須（違反時は成果キャンセル）。"
+    },
+    "creatives": [
+      {
+        "materialId": "004",
+        "type": "text",
+        "label": "家電を手軽にレンタル！ゲオあれこれレンタル",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+5Z6WY"
+      },
+      {
+        "materialId": "003",
+        "type": "text",
+        "label": "【ゲオあれこれレンタル】 カメラや家電製品、スマホやPCなどのレンタルサービスです☆",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+5YZ77"
+      },
+      {
+        "materialId": "017",
+        "type": "banner",
+        "size": "120x60",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+61Z81",
+        "imgSrc": "https://www21.a8.net/svt/bgt?aid=251027041976&wid=003&eno=01&mid=s00000023591001017000&mc=1"
+      },
+      {
+        "materialId": "016",
+        "type": "banner",
+        "size": "120x60",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+61RI9",
+        "imgSrc": "https://www26.a8.net/svt/bgt?aid=251027041976&wid=003&eno=01&mid=s00000023591001016000&mc=1"
+      },
+      {
+        "materialId": "012",
+        "type": "banner",
+        "size": "300x250",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+60WN5",
+        "imgSrc": "https://www28.a8.net/svt/bgt?aid=251027041976&wid=003&eno=01&mid=s00000023591001012000&mc=1"
+      },
+      {
+        "materialId": "001",
+        "type": "text",
+        "label": "ゲオあれこれレンタル",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+5YJRM"
+      },
+      {
+        "materialId": "013",
+        "type": "banner",
+        "size": "300x250",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+614CX",
+        "imgSrc": "https://www26.a8.net/svt/bgt?aid=251027041976&wid=003&eno=01&mid=s00000023591001013000&mc=1"
+      },
+      {
+        "materialId": "008",
+        "type": "banner",
+        "size": "468x60",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+601S1",
+        "imgSrc": "https://www21.a8.net/svt/bgt?aid=251027041976&wid=003&eno=01&mid=s00000023591001008000&mc=1"
+      },
+      {
+        "materialId": "014",
+        "type": "banner",
+        "size": "234x60",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+61C2P",
+        "imgSrc": "https://www22.a8.net/svt/bgt?aid=251027041976&wid=003&eno=01&mid=s00000023591001014000&mc=1"
+      },
+      {
+        "materialId": "009",
+        "type": "banner",
+        "size": "468x60",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+609HT",
+        "imgSrc": "https://www29.a8.net/svt/bgt?aid=251027041976&wid=003&eno=01&mid=s00000023591001009000&mc=1"
+      },
+      {
+        "materialId": "005",
+        "type": "text",
+        "label": "ゲオあれこれレンタル／注文〜返却まで初心者もカンタン",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+5ZEMQ"
+      },
+      {
+        "materialId": "006",
+        "type": "text",
+        "label": "ネットで注文、自宅までお届け。ゲオあれこれレンタル",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+5ZMCI"
+      },
+      {
+        "materialId": "002",
+        "type": "text",
+        "label": "ゲオあれこれレンタル　話題の商品をお得にレンタル",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+5YRHE"
+      },
+      {
+        "materialId": "010",
+        "type": "banner",
+        "size": "320x50",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+60H7L",
+        "imgSrc": "https://www23.a8.net/svt/bgt?aid=251027041976&wid=003&eno=01&mid=s00000023591001010000&mc=1"
+      },
+      {
+        "materialId": "011",
+        "type": "banner",
+        "size": "320x50",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+60OXD",
+        "imgSrc": "https://www23.a8.net/svt/bgt?aid=251027041976&wid=003&eno=01&mid=s00000023591001011000&mc=1"
+      },
+      {
+        "materialId": "015",
+        "type": "banner",
+        "size": "234x60",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+61JSH",
+        "imgSrc": "https://www22.a8.net/svt/bgt?aid=251027041976&wid=003&eno=01&mid=s00000023591001015000&mc=1"
+      },
+      {
+        "materialId": "018",
+        "type": "banner",
+        "size": "100x60",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+626XT",
+        "imgSrc": "https://www24.a8.net/svt/bgt?aid=251027041976&wid=003&eno=01&mid=s00000023591001018000&mc=1"
+      },
+      {
+        "materialId": "019",
+        "type": "banner",
+        "size": "100x60",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+62ENL",
+        "imgSrc": "https://www28.a8.net/svt/bgt?aid=251027041976&wid=003&eno=01&mid=s00000023591001019000&mc=1"
+      },
+      {
+        "materialId": "007",
+        "type": "text",
+        "label": "☆買う前にレンタルで試す☆【ゲオあれこれレンタル】",
+        "href": "https://px.a8.net/svt/ejp?a8mat=45GDPD+G534QQ+5212+5ZU2B"
+      }
+    ]
+  }
+}

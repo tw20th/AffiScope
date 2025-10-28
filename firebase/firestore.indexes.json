@@ -264,6 +264,24 @@
         { "fieldPath": "relatedOfferId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "offers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "siteIds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "archived", "order": "ASCENDING" },
+        { "fieldPath": "priority", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "offers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "siteIdPrimary", "order": "ASCENDING" },
+        { "fieldPath": "archived", "order": "ASCENDING" },
+        { "fieldPath": "priority", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
